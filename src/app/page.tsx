@@ -2,45 +2,33 @@
 import { Header } from '@/components/layout/Header';
 import { Footer } from '@/components/layout/Footer';
 import { CtaButton } from '@/components/CtaButton';
-import { QrCodeGenerator } from '@/components/QrCodeGenerator'; // Import the new component
-import { Separator } from '@/components/ui/separator'; // Import Separator
+import { QrCodeGenerator } from '@/components/QrCodeGenerator';
+import { Separator } from '@/components/ui/separator';
 
 export default function Home() {
-  const targetUrl = process.env.NEXT_PUBLIC_TARGET_URL || 'https://firebase.google.com'; // Default URL, configurable via env var
+  // The target URL for the main CTA can still be configured if needed elsewhere
+  // const targetUrl = process.env.NEXT_PUBLIC_TARGET_URL || 'https://firebase.google.com';
 
   return (
     <>
       <Header />
       <main
         id="home" // ID for navigation link
-        className="flex flex-1 flex-col items-center justify-center p-4 text-center"
+        className="container flex flex-1 flex-col items-center justify-center py-8 md:py-12"
       >
-        <div className="my-auto space-y-8"> {/* Center content vertically and add spacing */}
-          {/* Call to Action Button */}
-          <div>
-            <CtaButton url={targetUrl} text="Visit Firebase" />
-            <p className="mt-4 text-sm text-muted-foreground">
-              Click the button above to go to our destination!
-            </p>
-          </div>
+        {/* Enhanced QR Code Generator Takes Center Stage */}
+        <QrCodeGenerator />
 
-           <Separator className="my-8" /> {/* Add a separator */}
-
-          {/* QR Code Generator */}
-           <QrCodeGenerator initialUrl={targetUrl} />
-
+        {/* Optional: Keep a simple CTA if desired, or remove */}
+        {/*
+        <Separator className="my-12" />
+        <div className="text-center space-y-4">
+           <CtaButton url={targetUrl} text="Visit Our Main Site" />
+           <p className="text-sm text-muted-foreground">
+             Or create your custom QR code above!
+           </p>
         </div>
-
-
-        {/* Optional: Placeholder sections for About and Contact */}
-        <section id="about" className="py-16 hidden"> {/* Hidden for now */}
-            <h2 className="text-2xl font-bold mb-4">About Us</h2>
-            <p className="text-muted-foreground">This website provides a direct link and a customizable QR code to a target URL.</p>
-        </section>
-        <section id="contact" className="py-16 hidden"> {/* Hidden for now */}
-            <h2 className="text-2xl font-bold mb-4">Contact</h2>
-             <p className="text-muted-foreground">Contact information placeholder.</p>
-        </section>
+        */}
 
       </main>
       <Footer />

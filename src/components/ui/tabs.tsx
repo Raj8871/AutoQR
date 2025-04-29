@@ -1,7 +1,10 @@
+
 "use client"
 
 import * as React from "react"
 import * as TabsPrimitive from "@radix-ui/react-tabs"
+// Removed unused icons, ensure necessary ones like Palette, ImageIcon, Clock are available where used
+// Example: import { Palette, ImageIcon, Clock } from 'lucide-react';
 
 import { cn } from "@/lib/utils"
 
@@ -53,3 +56,4 @@ const TabsContent = React.forwardRef<
 TabsContent.displayName = TabsPrimitive.Content.displayName
 
 export { Tabs, TabsList, TabsTrigger, TabsContent }
+
