@@ -64,6 +64,36 @@ body {
     /* Add a subtle gradient background */
     background: linear-gradient(180deg, hsl(var(--background)) 0%, hsl(var(--secondary)) 100%);
   }
+
+  /* Ensure color inputs display correctly */
+  input[type="color"] {
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    width: 100%; /* Make it full width */
+    height: 2.5rem; /* Match standard input height (h-10) */
+    padding: 0.25rem; /* Add some padding */
+    background-color: transparent;
+    border: 1px solid hsl(var(--input));
+    border-radius: var(--radius);
+    cursor: pointer;
+  }
+
+  input[type="color"]::-webkit-color-swatch-wrapper {
+    padding: 0;
+    border-radius: calc(var(--radius) - 4px); /* Inner radius */
+  }
+
+  input[type="color"]::-webkit-color-swatch {
+    border: none;
+     border-radius: calc(var(--radius) - 4px); /* Match wrapper */
+  }
+
+   input[type="color"]::-moz-color-swatch {
+     border: none;
+      border-radius: calc(var(--radius) - 4px);
+   }
+
 }
 
 /* Add smooth scrolling */
