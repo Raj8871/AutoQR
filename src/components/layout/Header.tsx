@@ -7,7 +7,7 @@ import React from 'react'; // Import React
 
 export function Header() {
 
-   // Define scrollToSection within the client component
+   // Define scrollToSection within the client component - Keep for potential future use or remove if no scroll links remain
    const scrollToSection = (id: string) => (e: React.MouseEvent<HTMLAnchorElement>) => {
     e.preventDefault();
     const element = document.getElementById(id);
@@ -31,6 +31,8 @@ export function Header() {
           <span className="font-bold sm:inline-block">LinkSpark</span>
         </Link>
         <nav className="flex items-center gap-4 md:gap-6 text-sm">
+          {/* Removed Home link as logo links to home */}
+          {/*
           <Link
             href="#home"
             onClick={scrollToSection('home')} // onClick is now allowed
@@ -39,11 +41,12 @@ export function Header() {
           >
             Home
           </Link>
+          */}
            <Link
-            href="#qr-generator-section"
-            onClick={scrollToSection('qr-generator-section')}
+            href="/generator" // Changed to navigate to /generator page
+            // onClick={scrollToSection('qr-generator-section')} // Removed onClick scroll handler
             className="transition-colors hover:text-foreground/80 text-foreground/60 flex items-center gap-1"
-             aria-label="Scroll to QR Generator section"
+             aria-label="Go to QR Generator page" // Updated aria-label
           >
             <QrCode className="h-4 w-4 hidden sm:inline-block" /> {/* Show icon on larger screens */}
             Generator

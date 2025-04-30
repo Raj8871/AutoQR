@@ -1,20 +1,22 @@
+
 // src/components/HeroSection.tsx
 'use client'; // Mark as Client Component
 
 import React from 'react';
 import { Button } from '@/components/ui/button';
-import { ArrowDown } from 'lucide-react';
+import { ArrowRight } from 'lucide-react'; // Changed icon to ArrowRight for navigation
+import Link from 'next/link'; // Import Link for navigation
 
-// Client-side scroll function
-const scrollToGenerator = (e: React.MouseEvent<HTMLButtonElement>) => {
-  e.preventDefault();
-  const element = document.getElementById('qr-generator-section');
-  if (element) {
-    element.scrollIntoView({ behavior: 'smooth' });
-  } else {
-    console.warn('Element with ID "qr-generator-section" not found for scrolling.');
-  }
-};
+// Client-side scroll function - No longer needed for this button
+// const scrollToGenerator = (e: React.MouseEvent<HTMLButtonElement>) => {
+//   e.preventDefault();
+//   const element = document.getElementById('qr-generator-section');
+//   if (element) {
+//     element.scrollIntoView({ behavior: 'smooth' });
+//   } else {
+//     console.warn('Element with ID "qr-generator-section" not found for scrolling.');
+//   }
+// };
 
 export function HeroSection() {
   return (
@@ -25,9 +27,12 @@ export function HeroSection() {
       <p className="text-lg md:text-xl text-muted-foreground max-w-2xl mx-auto">
         Generate dynamic and customizable QR codes for URLs, contact info, events, WiFi, and more. Add logos, change colors, and choose styles with a live preview.
       </p>
-      <Button size="lg" onClick={scrollToGenerator}>
-        Start Generating
-        <ArrowDown className="ml-2 h-5 w-5" />
+      {/* Use Link component wrapped in Button for navigation */}
+      <Button size="lg" asChild>
+        <Link href="/generator">
+           Start Generating
+           <ArrowRight className="ml-2 h-5 w-5" />
+        </Link>
       </Button>
     </section>
   );
