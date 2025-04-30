@@ -47,7 +47,7 @@ const defaultOptions: QRCodeStylingOptions = {
   width: 256,
   height: 256,
   type: 'svg',
-  data: '', // Default data is now empty
+  data: 'https://linkspark.com', // Default data
   image: '',
   dotsOptions: {
     color: '#008080', // Teal accent color
@@ -226,13 +226,18 @@ const generateQrDataString = (type: QrType, data: Record<string, any>): string =
       default: targetData = '';
     }
 
+    // Use default link if targetData is empty for URL type
+     if (type === 'url' && !targetData) {
+         targetData = defaultOptions.data || 'https://example.com'; // Fallback to default or generic example
+     }
+
     return targetData;
 };
 
 
 export function QrCodeGenerator() {
   const [qrType, setQrType] = useState<QrType>('url');
-  const [inputData, setInputData] = useState<Record<string, any>>({}); // Start with empty data
+  const [inputData, setInputData] = useState<Record<string, any>>({}); // Start with empty data for most types
   const [options, setOptions] = useState<QRCodeStylingOptions>(defaultOptions);
   const [qrCodeInstance, setQrCodeInstance] = useState<QRCodeStyling | null>(null);
   const [fileExtension, setFileExtension] = useState<FileExtension>('png');
@@ -262,12 +267,21 @@ export function QrCodeGenerator() {
   useEffect(() => {
     if (!qrPreviewRef.current) return; // Ensure the ref is available
 
+    const qrData = generateQrData();
     const qrOptions = {
       ...options,
-      data: generateQrData(),
+      data: qrData, // Use generated data, could be empty string if no input yet
       width: options.width || 256,
       height: options.height || 256,
     };
+
+     // Don't create instance if data is empty, unless it's the URL type with default
+     if (!qrData && qrType !== 'url') {
+         if (qrPreviewRef.current) {
+            qrPreviewRef.current.innerHTML = '<p class="text-muted-foreground text-center p-4">Enter data to generate QR code.</p>';
+         }
+         return; // Stop if no data (except for URL type)
+     }
 
     const instance = new QRCodeStyling(qrOptions);
     setQrCodeInstance(instance); // Store the instance
@@ -275,35 +289,19 @@ export function QrCodeGenerator() {
     const currentRef = qrPreviewRef.current; // Capture the ref's current value
 
     // Clear the container before appending the new QR code
-    while (currentRef.firstChild) {
-      currentRef.removeChild(currentRef.firstChild);
-    }
+    currentRef.innerHTML = ''; // Simplify cleanup
     instance.append(currentRef); // Append the new QR code
 
-    // Cleanup function: remove the QR code SVG when the component unmounts or dependencies change
+    // Cleanup function: clear the container's content
     return () => {
-      try {
-        // Ensure instance._canvas is a valid Node before attempting removal
-        if (currentRef && instance._canvas instanceof Node && currentRef.contains(instance._canvas)) {
-          currentRef.removeChild(instance._canvas);
-        } else if (currentRef && currentRef.firstChild) {
-            // Fallback: try removing the first child if direct canvas removal failed or wasn't possible
-            // This handles cases where the structure might differ slightly
-            // currentRef.removeChild(currentRef.firstChild);
-             // Clear innerHTML as a safer fallback if direct child removal is problematic
-             currentRef.innerHTML = '';
-        }
-      } catch (error) {
-         console.warn("Error removing QR code canvas:", error);
-         // Attempt to clear the ref's content as a last resort
-         if(currentRef) {
-             currentRef.innerHTML = '';
-         }
+      if (currentRef) {
+        currentRef.innerHTML = ''; // Clear the container on unmount or re-render
       }
-      setQrCodeInstance(null); // Clear the instance from state
+      // No need to manage instance removal explicitly if we clear the container
+      // setQrCodeInstance(null); // Consider if clearing state is needed
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [options, generateQrData]); // Re-run effect when options or data change
+  }, [options, generateQrData, qrType]); // Include qrType dependency
 
 
   // --- Input Handlers ---
@@ -523,23 +521,24 @@ export function QrCodeGenerator() {
 
  // --- Download ---
   const onDownloadClick = useCallback(() => {
-    if (!qrCodeInstance || !generateQrData()) {
-        toast({ variant: "destructive", title: "Cannot Download", description: "Please enter data to generate the QR code first." });
-        return;
-    };
+      const qrData = generateQrData();
+      if (!qrCodeInstance || !qrData) {
+          toast({ variant: "destructive", title: "Cannot Download", description: "Please enter data to generate the QR code first." });
+          return;
+      }
 
-    // Add a reminder that expiry requires a backend
-    if (expiryDate) {
-        toast({ title: "Downloading QR", description: "Note: Expiry functionality is a visual reminder and requires a backend service for redirection.", duration: 5000 });
-    }
+      // Add a reminder that expiry requires a backend
+      if (expiryDate) {
+          toast({ title: "Downloading QR", description: "Note: Expiry functionality is a visual reminder and requires a backend service for redirection.", duration: 5000 });
+      }
 
-    if (qrLabel) {
-         // Label functionality is complex and not implemented for direct download
-         toast({ title: "Label Not Included", description: "Downloading the QR code only. Labels are for preview only.", duration: 5000 });
-    }
+      if (qrLabel) {
+           // Label functionality is complex and not implemented for direct download
+           toast({ title: "Label Not Included", description: "Downloading the QR code only. Labels are for preview only.", duration: 5000 });
+      }
 
 
-    qrCodeInstance.download({ name: `linkspark-qr-${qrType}`, extension: fileExtension });
+      qrCodeInstance.download({ name: `linkspark-qr-${qrType}`, extension: fileExtension });
   }, [qrCodeInstance, fileExtension, qrType, qrLabel, expiryDate, generateQrData]); // Added generateQrData dependency
 
 
@@ -550,7 +549,7 @@ export function QrCodeGenerator() {
         return (
           <div className="space-y-2">
             <Label htmlFor="qr-url">Website URL</Label>
-            <Input id="qr-url" type="url" value={inputData.url || ''} onChange={(e) => handleInputChange('url', e.target.value)} placeholder="https://example.com" required/>
+            <Input id="qr-url" type="url" value={inputData.url ?? ''} onChange={(e) => handleInputChange('url', e.target.value)} placeholder="https://example.com" required/>
           </div>
         );
       case 'text':
@@ -961,12 +960,8 @@ export function QrCodeGenerator() {
           <CardContent className="flex flex-col items-center justify-center space-y-4">
              {/* QR Code Preview Area */}
             <div ref={qrPreviewRef} className="border rounded-md overflow-hidden shadow-inner flex items-center justify-center bg-white" style={{ width: options.width ?? 256, height: options.height ?? 256 }}>
-                {/* QR code gets appended here */}
-                {/* {!qrCodeInstance && <p className="text-muted-foreground text-sm p-4">Generating QR...</p>} */}
-                 {/* Show placeholder if no data */}
-                {/* {qrCodeInstance && !generateQrData() && <p className="text-muted-foreground text-center p-4">Enter data to generate QR code.</p>} */}
-                {(qrCodeInstance && !generateQrData()) && <p className="text-muted-foreground text-center p-4">Enter data to generate QR code.</p>}
-                {(!qrCodeInstance) && <p className="text-muted-foreground text-sm p-4">Generating QR...</p>}
+                 {/* Placeholder text appears here based on useEffect logic */}
+                 <p className="text-muted-foreground text-center p-4">Enter data to generate QR code.</p>
             </div>
              {qrLabel && (
                 <p className="font-medium text-center mt-1">{qrLabel}</p>
@@ -996,3 +991,5 @@ export function QrCodeGenerator() {
     </div>
   );
 }
+
+    
