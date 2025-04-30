@@ -283,13 +283,19 @@ export function QrCodeGenerator() {
     // Cleanup function: remove the QR code SVG when the component unmounts or dependencies change
     return () => {
       try {
-        if (currentRef && currentRef.contains(instance._canvas)) {
-          // Check if the canvas is still a child before removing
+        // Ensure instance._canvas is a valid Node before attempting removal
+        if (currentRef && instance._canvas instanceof Node && currentRef.contains(instance._canvas)) {
           currentRef.removeChild(instance._canvas);
+        } else if (currentRef && currentRef.firstChild) {
+            // Fallback: try removing the first child if direct canvas removal failed or wasn't possible
+            // This handles cases where the structure might differ slightly
+            // currentRef.removeChild(currentRef.firstChild);
+             // Clear innerHTML as a safer fallback if direct child removal is problematic
+             currentRef.innerHTML = '';
         }
       } catch (error) {
          console.warn("Error removing QR code canvas:", error);
-         // Attempt to clear the ref's content as a fallback
+         // Attempt to clear the ref's content as a last resort
          if(currentRef) {
              currentRef.innerHTML = '';
          }
