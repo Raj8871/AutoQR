@@ -2,7 +2,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import QRCodeStyling, { type Options as QRCodeStylingOptions, type FileExtension, type DotType, type CornerSquareType, type CornerDotType } from 'qr-code-styling';
+import QRCodeStyling, { type Options as QRCodeStylingOptions, type FileExtension, type DotType, type CornerSquareType, type CornerDotType, Extension } from 'qr-code-styling';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -13,7 +13,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Download, Image as ImageIcon, Link as LinkIcon, Phone, Mail, MessageSquare, MapPin, Calendar as CalendarIcon, User, Settings2, Palette, Shapes, Clock, Wifi, Upload, Check, Trash2, Info, Eye, EyeOff } from 'lucide-react'; // Added Info, Eye, EyeOff
+import { Download, Image as ImageIcon, Link as LinkIcon, Phone, Mail, MessageSquare, MapPin, Calendar as CalendarIcon, User, Settings2, Palette, Clock, Wifi, Upload, Check, Trash2, Info, Eye, EyeOff, QrCode as QrCodeIcon } from 'lucide-react'; // Added QrCodeIcon, removed Shapes
 import { format } from "date-fns";
 import { cn } from '@/lib/utils';
 import { toast } from '@/hooks/use-toast';
@@ -47,7 +47,7 @@ const wifiEncryptionTypes = ['WPA/WPA2', 'WEP', 'None'];
 const defaultOptions: QRCodeStylingOptions = {
   width: 256,
   height: 256,
-  type: 'svg',
+  type: 'svg', // Default to SVG for better scalability
   data: '', // Start with empty data
   image: '',
   dotsOptions: {
@@ -91,6 +91,8 @@ const formatVCard = (data: Record<string, string>): string => {
   if (data.website) vCardString += `URL:${data.website}\n`;
   if (data.address) vCardString += `ADR;TYPE=WORK:;;${data.address}\n`; // Basic address format
   vCardString += 'END:VCARD';
+  // vCard requires at least first or last name to be somewhat valid for many readers
+  if (!data.firstName && !data.lastName) return '';
   return vCardString;
 };
 
@@ -102,14 +104,17 @@ const formatICS = (data: Record<string, any>): string => {
       return date.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
     };
 
+    // Event requires a summary and start date
+    if (!data.summary || !data.startDate) return '';
+
     let icsString = 'BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//LinkSpark//QR Event Generator//EN\nBEGIN:VEVENT\n';
-    if (data.summary) icsString += `SUMMARY:${data.summary}\n`;
+    icsString += `SUMMARY:${data.summary}\n`;
     if (data.location) icsString += `LOCATION:${data.location}\n`;
     if (data.description) icsString += `DESCRIPTION:${data.description.replace(/\n/g, '\\n')}\n`; // Escape newlines
-    if (data.startDate) icsString += `DTSTART:${formatDate(data.startDate)}\n`;
+    icsString += `DTSTART:${formatDate(data.startDate)}\n`;
     if (data.endDate) {
       icsString += `DTEND:${formatDate(data.endDate)}\n`;
-    } else if (data.startDate) { // Default to 1 hour duration if no end date
+    } else { // Default to 1 hour duration if no end date
         const endDate = new Date(data.startDate.getTime() + 60 * 60 * 1000);
         icsString += `DTEND:${formatDate(endDate)}\n`;
     }
@@ -131,6 +136,9 @@ const formatWifi = (data: Record<string, any>): string => {
 
     // Ensure required fields have values
     if (!ssid) return ''; // SSID is mandatory
+
+    // Password is required if encryption is not 'None'
+    if (encryption !== 'nopass' && !password) return '';
 
     return `WIFI:T:${encryption};S:${ssid};${encryption !== 'nopass' ? `P:${password};` : ''}H:${hidden};;`;
 };
@@ -201,26 +209,27 @@ const generateQrDataString = (type: QrType, data: Record<string, any>): string =
 
     try {
          switch (type) {
-          case 'url': targetData = data.url || ''; break;
-          case 'text': targetData = data.text || ''; break;
+          case 'url': targetData = data.url?.trim() || ''; break; // Trim whitespace
+          case 'text': targetData = data.text?.trim() || ''; break; // Trim whitespace
           case 'email':
-            const emailTo = data.email || '';
+            const emailTo = data.email?.trim();
             if (emailTo) {
                  targetData = `mailto:${emailTo}?subject=${encodeURIComponent(data.subject || '')}&body=${encodeURIComponent(data.body || '')}`;
             }
             break;
-          case 'phone': targetData = data.phone ? `tel:${data.phone}` : ''; break;
+          case 'phone': targetData = data.phone?.trim() ? `tel:${data.phone.trim()}` : ''; break;
           case 'whatsapp':
-            const phoneNum = (data.whatsapp_phone || '').replace(/[^0-9]/g, '');
+            const phoneNum = (data.whatsapp_phone || '').replace(/[^0-9]/g, ''); // Keep only digits
             targetData = phoneNum ? `https://wa.me/${phoneNum}?text=${encodeURIComponent(data.whatsapp_message || '')}` : '';
             break;
           case 'sms':
-            const smsPhoneNum = (data.sms_phone || '').replace(/[^0-9]/g, '');
+            const smsPhoneNum = (data.sms_phone || '').trim(); // Allow + and digits
             targetData = smsPhoneNum ? `sms:${smsPhoneNum}?body=${encodeURIComponent(data.sms_message || '')}` : '';
             break;
           case 'location':
              if (data.latitude && data.longitude) {
                 targetData = `https://www.google.com/maps/search/?api=1&query=${data.latitude},${data.longitude}`;
+                // Could also use geo:lat,lng
              }
              break;
           case 'event':
@@ -235,8 +244,6 @@ const generateQrDataString = (type: QrType, data: Record<string, any>): string =
                   title: data.vcard_title, phone: data.vcard_phone, mobile: data.vcard_mobile,
                   email: data.vcard_email, website: data.vcard_website, address: data.vcard_address
               });
-               // vCard requires at least one field to be useful
-               if (targetData === 'BEGIN:VCARD\nVERSION:3.0\nEND:VCARD') targetData = '';
                break;
           case 'wifi':
                targetData = formatWifi({
@@ -261,6 +268,7 @@ export function QrCodeGenerator() {
   const [inputData, setInputData] = useState<Record<string, any>>({});
   const [options, setOptions] = useState<QRCodeStylingOptions>(defaultOptions);
   const [qrCodeInstance, setQrCodeInstance] = useState<QRCodeStyling | null>(null);
+  const [qrCodeSvgDataUrl, setQrCodeSvgDataUrl] = useState<string | null>(null); // State for SVG data URL
   const [fileExtension, setFileExtension] = useState<FileExtension>('png');
   const [logoPreviewUrl, setLogoPreviewUrl] = useState<string | null>(null);
   const [originalLogoUrl, setOriginalLogoUrl] = useState<string | null>(null);
@@ -272,8 +280,9 @@ export function QrCodeGenerator() {
   const [expiryTime, setExpiryTime] = useState<string>("00:00"); // HH:mm format
   const [wifiPasswordVisible, setWifiPasswordVisible] = useState<boolean>(false); // Start with password hidden for Wi-Fi
   const [isQrGenerated, setIsQrGenerated] = useState<boolean>(false); // Track if a QR code is currently displayed
+  const [qrPreviewKey, setQrPreviewKey] = useState<number>(0); // Key to force re-render preview
 
-  const qrPreviewRef = useRef<HTMLDivElement>(null);
+
   const logoInputRef = useRef<HTMLInputElement>(null);
 
   // Generate QR Data String based on type and inputData
@@ -282,54 +291,62 @@ export function QrCodeGenerator() {
   }, [qrType, inputData]);
 
 
-  // Initialize and update QR Code instance
+  // Initialize and update QR Code instance, generate SVG data URL
   useEffect(() => {
-    if (!qrPreviewRef.current) return;
-
     const qrData = generateQrData();
-    const currentRef = qrPreviewRef.current;
-
-    // Clear previous QR code or placeholder
-    currentRef.innerHTML = '';
-    setIsQrGenerated(false); // Reset generation status
+    setIsQrGenerated(!!qrData); // Update generated status based on data presence
 
     if (!qrData) {
-        // Display placeholder if no data is entered
-         const placeholder = document.createElement('div');
-         placeholder.className = "text-muted-foreground text-center p-4 flex flex-col items-center justify-center h-full";
-         placeholder.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-qr-code mb-2"><rect width="5" height="5" x="3" y="3" rx="1"/><rect width="5" height="5" x="16" y="3" rx="1"/><rect width="5" height="5" x="3" y="16" rx="1"/><path d="M21 16h-3a2 2 0 0 0-2 2v3"/><path d="M21 21v.01"/><path d="M12 7v3a2 2 0 0 1-2 2H7"/><path d="M3 12h.01"/><path d="M12 3h.01"/><path d="M12 16h.01"/><path d="M16 12h.01"/><path d="M21 12h.01"/><path d="M12 21h.01"/></svg><span>Enter data to generate QR code.</span>`;
-         currentRef.appendChild(placeholder);
-         setQrCodeInstance(null); // Ensure no stale instance exists
-        return;
+      setQrCodeSvgDataUrl(null); // Clear SVG if no data
+      setQrCodeInstance(null);
+      setQrPreviewKey(prev => prev + 1); // Force re-render placeholder
+      return;
     }
 
-    // Create and append new QR code instance
     const qrOptions = { ...options, data: qrData };
+
     try {
-        const instance = new QRCodeStyling(qrOptions);
-        instance.append(currentRef);
-        setQrCodeInstance(instance);
-        setIsQrGenerated(true); // Mark as generated
+      const instance = new QRCodeStyling(qrOptions);
+      setQrCodeInstance(instance); // Keep instance for download
+
+      // Generate SVG data URL for preview
+      instance.getRawData('svg').then((blob) => {
+        if (blob) {
+          const reader = new FileReader();
+          reader.onload = () => {
+            setQrCodeSvgDataUrl(reader.result as string);
+            setQrPreviewKey(prev => prev + 1); // Update key to re-render preview
+          };
+          reader.readAsDataURL(blob);
+        } else {
+             setQrCodeSvgDataUrl(null);
+             toast({ variant: "destructive", title: "QR Preview Error", description: "Could not generate SVG preview." });
+        }
+      }).catch(error => {
+          console.error("Error getting SVG data:", error);
+          setQrCodeSvgDataUrl(null);
+          toast({ variant: "destructive", title: "QR Preview Error", description: "Could not generate SVG preview." });
+      });
+
     } catch (error) {
-        console.error("Error creating QR code instance:", error);
-        toast({ variant: "destructive", title: "QR Generation Error", description: "Could not create the QR code. Please try again." });
-        // Optionally display an error message in the preview area
-        const errorMsg = document.createElement('p');
-        errorMsg.className = "text-destructive text-center p-4";
-        errorMsg.textContent = "Error generating QR code.";
-        currentRef.appendChild(errorMsg);
+      console.error("Error creating QR code instance:", error);
+      setQrCodeSvgDataUrl(null); // Clear SVG on error
+      setQrCodeInstance(null);
+      setIsQrGenerated(false);
+      toast({ variant: "destructive", title: "QR Generation Error", description: "Could not create the QR code. Please try again." });
+       setQrPreviewKey(prev => prev + 1); // Force re-render error state/placeholder
     }
 
-    // Cleanup function (no longer needed to removeChild directly)
-    // return () => {
-      // instance.current is handled via state now
-    // };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [options, qrType, inputData]); // Re-run when options, type, or data changes
 
 
   // --- Input Handlers ---
   const handleInputChange = (key: string, value: any) => {
+    // Basic validation within handler if needed (e.g., number fields)
+    if ((key === 'latitude' || key === 'longitude') && value && isNaN(Number(value))) {
+        return; // Prevent non-numeric input for coordinates
+    }
     setInputData(prev => ({ ...prev, [key]: value }));
   };
 
@@ -388,14 +405,6 @@ export function QrCodeGenerator() {
 
   // --- Customization Handlers ---
   const handleColorChange = (target: 'dots' | 'background' | 'cornersSquare' | 'cornersDot', color: string) => {
-     // Basic validation for hex color format
-     if (!/^#[0-9A-F]{6}$/i.test(color) && target !== 'background') {
-        // Allow transparent/other for background potentially, but enforce hex for QR elements
-        // Simple approach: enforce hex for all for now
-         // toast({ variant: "destructive", title: "Invalid Color", description: "Please select a valid hex color." });
-         // return; // Or let the input handle its validation visually
-     }
-
      setOptions(prev => ({
         ...prev,
         ...(target === 'dots' && { dotsOptions: { ...prev.dotsOptions, color } }),
@@ -486,7 +495,7 @@ export function QrCodeGenerator() {
          }));
     }
  // eslint-disable-next-line react-hooks/exhaustive-deps
- }, [logoShape, logoOpacity, options.imageOptions, logoSize, setOptions]);
+ }, [logoSize, setOptions]); // Dependencies updated
 
 
  const handleLogoUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -638,14 +647,17 @@ export function QrCodeGenerator() {
           // toast({ title: "Label Info", description: "The label text is for display only and not part of the downloaded QR code.", duration: 5000 });
       }
 
+      // Update instance options before download (especially if options changed but instance wasn't recreated yet)
+      qrCodeInstance.update({ ...options, data: qrData });
+
       try {
-            await qrCodeInstance.download({ name: `linkspark-qr-${qrType}`, extension: fileExtension });
+            await qrCodeInstance.download({ name: `linkspark-qr-${qrType}`, extension: fileExtension as Extension });
             toast({ title: "Download Started", description: `QR code downloading as ${fileExtension.toUpperCase()}.` });
       } catch (error) {
           console.error("Error downloading QR code:", error);
           toast({ variant: "destructive", title: "Download Failed", description: "Could not download the QR code. Please try again." });
       }
-  }, [qrCodeInstance, fileExtension, qrType, qrLabel, expiryDate, generateQrData, isQrGenerated]);
+  }, [qrCodeInstance, options, fileExtension, qrType, qrLabel, expiryDate, generateQrData, isQrGenerated]); // Added options to dependencies
 
 
   // --- Render Dynamic Inputs ---
@@ -735,11 +747,11 @@ export function QrCodeGenerator() {
                                 return (
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                     <div className="space-y-2">
-                                        <Label htmlFor="qr-latitude">Latitude</Label>
+                                        <Label htmlFor="qr-latitude">Latitude *</Label>
                                         <Input id="qr-latitude" type="number" step="any" value={inputData.latitude || ''} onChange={(e) => handleInputChange('latitude', e.target.value)} placeholder="e.g., 40.7128" required />
                                     </div>
                                     <div className="space-y-2">
-                                        <Label htmlFor="qr-longitude">Longitude</Label>
+                                        <Label htmlFor="qr-longitude">Longitude *</Label>
                                         <Input id="qr-longitude" type="number" step="any" value={inputData.longitude || ''} onChange={(e) => handleInputChange('longitude', e.target.value)} placeholder="e.g., -74.0060" required />
                                     </div>
                                     </div>
@@ -748,12 +760,12 @@ export function QrCodeGenerator() {
                             return (
                                 <div className="space-y-4">
                                     <div className="space-y-2">
-                                        <Label htmlFor="qr-event-summary">Event Title</Label>
+                                        <Label htmlFor="qr-event-summary">Event Title *</Label>
                                         <Input id="qr-event-summary" type="text" value={inputData.event_summary || ''} onChange={(e) => handleInputChange('event_summary', e.target.value)} placeholder="Meeting, Birthday Party..." required />
                                     </div>
                                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                                         <div className="space-y-2">
-                                            <Label>Start Date & Time</Label>
+                                            <Label>Start Date & Time *</Label>
                                             <Popover>
                                                 <PopoverTrigger asChild>
                                                     <Button variant="outline" className={cn("w-full justify-start text-left font-normal", !inputData.event_start && "text-muted-foreground")}>
@@ -771,7 +783,7 @@ export function QrCodeGenerator() {
                                             </Popover>
                                         </div>
                                         <div className="space-y-2">
-                                            <Label>End Date & Time</Label>
+                                            <Label>End Date & Time (Optional)</Label>
                                             <Popover>
                                                 <PopoverTrigger asChild>
                                                     <Button variant="outline" className={cn("w-full justify-start text-left font-normal", !inputData.event_end && "text-muted-foreground")}>
@@ -797,6 +809,7 @@ export function QrCodeGenerator() {
                                         <Label htmlFor="qr-event-description">Description (Optional)</Label>
                                         <Textarea id="qr-event-description" value={inputData.event_description || ''} onChange={(e) => handleInputChange('event_description', e.target.value)} placeholder="Event details..." rows={3} />
                                     </div>
+                                    <p className="text-xs text-muted-foreground">* Event Title and Start Date are required.</p>
                                 </div>
                             );
                         case 'vcard':
@@ -849,13 +862,14 @@ export function QrCodeGenerator() {
                                         <Input id="wifi-ssid" value={inputData.wifi_ssid || ''} onChange={(e) => handleInputChange('wifi_ssid', e.target.value)} placeholder="MyHomeNetwork" required />
                                     </div>
                                     <div className="space-y-2">
-                                        <Label htmlFor="wifi-password">Password</Label>
+                                        <Label htmlFor="wifi-password">Password *</Label>
                                         <div className="flex items-center gap-2">
-                                        <Input id="wifi-password" type={wifiPasswordVisible ? 'text' : 'password'} value={inputData.wifi_password || ''} onChange={(e) => handleInputChange('wifi_password', e.target.value)} placeholder="Your password" disabled={inputData.wifi_encryption === 'None'}/>
+                                        <Input id="wifi-password" type={wifiPasswordVisible ? 'text' : 'password'} value={inputData.wifi_password || ''} onChange={(e) => handleInputChange('wifi_password', e.target.value)} placeholder="Your password" disabled={inputData.wifi_encryption === 'None'} required={inputData.wifi_encryption !== 'None'}/>
                                         <Button variant="ghost" size="icon" onClick={() => setWifiPasswordVisible(!wifiPasswordVisible)} type="button" aria-label={wifiPasswordVisible ? "Hide password" : "Show password"} disabled={inputData.wifi_encryption === 'None'}>
                                             {wifiPasswordVisible ? <EyeOff className="h-4 w-4"/> : <Eye className="h-4 w-4"/>}
                                         </Button>
                                         </div>
+                                         {inputData.wifi_encryption === 'None' && <p className="text-xs text-muted-foreground">Password not needed for 'None' encryption.</p>}
                                     </div>
                                     <div className="space-y-2">
                                         <Label htmlFor="wifi-encryption">Encryption</Label>
@@ -882,7 +896,7 @@ export function QrCodeGenerator() {
                                             </Tooltip>
                                         </TooltipProvider>
                                     </div>
-                                     <p className="text-xs text-muted-foreground">* Network Name (SSID) is required.</p>
+                                     <p className="text-xs text-muted-foreground">* Network Name (SSID) is required. * Password required unless encryption is 'None'.</p>
                                 </div>
                             );
 
@@ -904,6 +918,7 @@ export function QrCodeGenerator() {
         <Card className="lg:col-span-2 order-2 lg:order-1 animate-fade-in">
           <CardHeader>
             <CardTitle>Customize Your QR Code</CardTitle>
+             <p className="text-sm text-muted-foreground">Generate and personalize QR codes for various purposes.</p>
           </CardHeader>
           <CardContent className="space-y-6">
              {/* QR Type Selection */}
@@ -1121,17 +1136,18 @@ export function QrCodeGenerator() {
         </Card>
 
         {/* QR Preview Panel */}
-        <Card className="lg:col-span-1 order-1 lg:order-2 sticky top-6 self-start animate-fade-in [animation-delay:0.2s]"> {/* Sticky preview */}
+        <Card key={qrPreviewKey} className="lg:col-span-1 order-1 lg:order-2 sticky top-6 self-start animate-fade-in [animation-delay:0.2s]"> {/* Sticky preview, added key */}
           <CardHeader>
             <CardTitle>4. Preview & Download</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col items-center justify-center space-y-4">
              {/* QR Code Preview Area */}
-            <div ref={qrPreviewRef} className="border rounded-lg overflow-hidden shadow-md flex items-center justify-center bg-white p-2" style={{ width: (options.width ?? 256) + 16, height: (options.height ?? 256) + 16 }}>
-                 {/* QR code is appended here by useEffect */}
-                  {!isQrGenerated && (
-                    <div className="text-muted-foreground text-center p-4 flex flex-col items-center justify-center h-full">
-                         <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-qr-code mb-2"><rect width="5" height="5" x="3" y="3" rx="1"/><rect width="5" height="5" x="16" y="3" rx="1"/><rect width="5" height="5" x="3" y="16" rx="1"/><path d="M21 16h-3a2 2 0 0 0-2 2v3"/><path d="M21 21v.01"/><path d="M12 7v3a2 2 0 0 1-2 2H7"/><path d="M3 12h.01"/><path d="M12 3h.01"/><path d="M12 16h.01"/><path d="M16 12h.01"/><path d="M21 12h.01"/><path d="M12 21h.01"/></svg>
+            <div className="border rounded-lg overflow-hidden shadow-md flex items-center justify-center bg-white p-2 relative" style={{ width: (options.width ?? 256) + 16, height: (options.height ?? 256) + 16 }}>
+                 {qrCodeSvgDataUrl ? (
+                    <img src={qrCodeSvgDataUrl} alt="Generated QR Code" style={{ width: options.width ?? 256, height: options.height ?? 256 }}/>
+                 ) : (
+                    <div className="text-muted-foreground text-center p-4 flex flex-col items-center justify-center h-full absolute inset-0 bg-white/80 backdrop-blur-sm">
+                         <QrCodeIcon className="h-12 w-12 mb-2 text-muted-foreground/50"/>
                          <span>Enter data to generate QR code.</span>
                      </div>
                   )}
@@ -1169,5 +1185,3 @@ export function QrCodeGenerator() {
     </div>
   );
 }
-
-    
