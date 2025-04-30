@@ -13,16 +13,16 @@ import { Textarea } from '@/components/ui/textarea';
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Calendar } from "@/components/ui/calendar"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Download, Image as ImageIcon, Link as LinkIcon, Phone, Mail, MessageSquare, MapPin, Calendar as CalendarIcon, User, Settings2, Palette, Shapes, Clock, Wifi } from 'lucide-react'; // Added Wifi, Phone, Mail, MessageSquare, MapPin, CalendarIcon, User icons back
+import { Download, Image as ImageIcon, Link as LinkIcon, Phone, Mail, MessageSquare, MapPin, Calendar as CalendarIcon, User, Settings2, Palette, Shapes, Clock, Wifi } from 'lucide-react';
 import { format } from "date-fns"
 import { cn } from '@/lib/utils';
 import { toast } from '@/hooks/use-toast';
 import { useRouter } from 'next/navigation';
 
-// Define allowed QR types including previously removed ones
+// Define allowed QR types
 type QrType = 'url' | 'text' | 'email' | 'phone' | 'whatsapp' | 'sms' | 'location' | 'event' | 'vcard' | 'wifi';
 
-// Updated options list re-adding previously removed types
+// QR type options
 const qrTypeOptions: { value: QrType; label: string; icon: React.ElementType }[] = [
   { value: 'url', label: 'Website URL', icon: LinkIcon },
   { value: 'text', label: 'Plain Text', icon: MessageSquare },
@@ -33,13 +33,13 @@ const qrTypeOptions: { value: QrType; label: string; icon: React.ElementType }[]
   { value: 'location', label: 'Google Maps Location', icon: MapPin },
   { value: 'event', label: 'Calendar Event', icon: CalendarIcon },
   { value: 'vcard', label: 'Contact Card (vCard)', icon: User },
-  { value: 'wifi', label: 'Wi-Fi Network', icon: Wifi }, // Added Wifi back
+  { value: 'wifi', label: 'Wi-Fi Network', icon: Wifi },
 ];
 
 const dotTypes: DotType[] = ['square', 'dots', 'rounded', 'classy', 'classy-rounded', 'extra-rounded'];
 const cornerSquareTypes: CornerSquareType[] = ['square', 'extra-rounded', 'dot'];
 const cornerDotTypes: CornerDotType[] = ['square', 'dot'];
-const wifiEncryptionTypes = ['WPA/WPA2', 'WEP', 'None']; // Added Wifi encryption types back
+const wifiEncryptionTypes = ['WPA/WPA2', 'WEP', 'None'];
 
 
 const defaultOptions: QRCodeStylingOptions = {
@@ -131,7 +131,7 @@ const formatWifi = (data: Record<string, any>): string => {
 };
 
 
-// Helper to process image for shape/opacity (using Canvas) - unchanged
+// Helper to process image for shape/opacity (using Canvas)
 const processImage = (
     imageUrl: string,
     shape: 'square' | 'circle',
@@ -193,7 +193,7 @@ export function QrCodeGenerator() {
   const [fileExtension, setFileExtension] = useState<FileExtension>('png');
   const [logoPreviewUrl, setLogoPreviewUrl] = useState<string | null>(null);
   const [originalLogoUrl, setOriginalLogoUrl] = useState<string | null>(null); // Store the original uploaded logo URL
-  const [logoSize, setLogoSize] = useState<number>(defaultOptions.imageOptions.imageSize * 100); // Percentage
+  const [logoSize, setLogoSize] = useState<number>(defaultOptions.imageOptions?.imageSize ? defaultOptions.imageOptions.imageSize * 100 : 40); // Percentage
   const [logoShape, setLogoShape] = useState<'square' | 'circle'>('square');
   const [logoOpacity, setLogoOpacity] = useState<number>(100); // Percentage (0-100)
   const [qrLabel, setQrLabel] = useState<string>('');
@@ -206,7 +206,10 @@ export function QrCodeGenerator() {
   const logoInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter(); // Initialize router
 
-  // Generate QR Data String based on type and inputData - re-added Wifi, Email, Phone, WhatsApp, SMS, Location, Event, vCard cases
+  // Generate QR Data String based on type and inputData
+  // Note: This function generates the *direct* data for the QR code.
+  // The expiry setting is purely cosmetic in the UI and does not affect this data.
+  // A backend system would be needed to handle expiry by using an intermediate URL.
   const generateQrData = useCallback((): string => {
     switch (qrType) {
       case 'url':
@@ -245,7 +248,7 @@ export function QrCodeGenerator() {
             website: inputData.vcard_website,
             address: inputData.vcard_address,
         });
-      case 'wifi': // Added Wi-Fi case back
+      case 'wifi':
         return formatWifi({
             wifi_ssid: inputData.wifi_ssid,
             wifi_password: inputData.wifi_password,
@@ -255,14 +258,14 @@ export function QrCodeGenerator() {
       default:
         return '';
     }
-  }, [qrType, inputData]); // Added inputData to dependencies
+  }, [qrType, inputData]); // inputData is crucial here
 
-  // Initialize QR Code instance (unchanged logic)
+  // Initialize QR Code instance
   useEffect(() => {
     if (!qrCodeInstance && qrPreviewRef.current) {
         const instance = new QRCodeStyling({
             ...options,
-            data: generateQrData(),
+            data: generateQrData(), // Use the generated data
             width: options.width || 256,
             height: options.height || 256,
         });
@@ -270,28 +273,29 @@ export function QrCodeGenerator() {
     } else if (qrCodeInstance) {
          qrCodeInstance.update({
             ...options,
-            data: generateQrData(),
+            data: generateQrData(), // Update with potentially new data
             width: options.width || 256,
             height: options.height || 256,
          });
     }
-  }, [options, generateQrData]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [options, generateQrData]); // Only re-run when options or generated data changes
 
-  // Append QR Code to the DOM - only when instance changes or ref becomes available (unchanged logic)
+  // Append QR Code to the DOM - only when instance changes or ref becomes available
   useEffect(() => {
     if (qrPreviewRef.current && qrCodeInstance) {
       qrPreviewRef.current.innerHTML = ''; // Clear previous QR code
       qrCodeInstance.append(qrPreviewRef.current);
     }
-  }, [qrCodeInstance, qrPreviewRef.current]);
+  }, [qrCodeInstance, qrPreviewRef]);
 
 
-  // --- Input Handlers --- (unchanged)
+  // --- Input Handlers ---
   const handleInputChange = (key: string, value: any) => {
     setInputData(prev => ({ ...prev, [key]: value }));
   };
 
-  // Handle checkbox changes (re-added for Wi-Fi hidden)
+  // Handle checkbox changes (for Wi-Fi hidden)
   const handleCheckboxChange = (key: string, checked: boolean) => {
     setInputData(prev => ({ ...prev, [key]: checked }));
   };
@@ -307,7 +311,7 @@ export function QrCodeGenerator() {
   };
 
 
-  // --- Customization Handlers --- (unchanged logic for remaining options)
+  // --- Customization Handlers ---
   const handleColorChange = (target: 'dots' | 'background' | 'cornersSquare' | 'cornersDot', color: string) => {
      setOptions(prev => ({
         ...prev,
@@ -340,18 +344,18 @@ export function QrCodeGenerator() {
      setLogoSize(sizePercent);
      setOptions(prev => ({
          ...prev,
-         imageOptions: { ...prev.imageOptions, imageSize: sizePercent / 100 }
+         imageOptions: { ...(prev.imageOptions ?? {}), imageSize: sizePercent / 100 }
      }));
      // Re-process image if one exists
      if (originalLogoUrl) {
-          applyLogoShapeAndOpacity(originalLogoUrl, logoShape, logoOpacity); // Size applied via options
+          applyLogoShapeAndOpacity(originalLogoUrl, logoShape, logoOpacity / 100); // Size applied via options
      }
   }
 
  const handleLogoShapeChange = (value: 'square' | 'circle') => {
      setLogoShape(value);
      if (originalLogoUrl) {
-         applyLogoShapeAndOpacity(originalLogoUrl, value, logoOpacity);
+         applyLogoShapeAndOpacity(originalLogoUrl, value, logoOpacity / 100);
      }
  };
 
@@ -364,25 +368,35 @@ export function QrCodeGenerator() {
  }
 
 
-  // --- Logo Handling --- (unchanged logic)
+  // --- Logo Handling ---
  const applyLogoShapeAndOpacity = useCallback(async (imageUrl: string, shape: 'square' | 'circle', opacity: number) => {
     try {
+      // Ensure imageOptions exists
+      const currentImageOptions = options.imageOptions ?? {
+        crossOrigin: 'anonymous',
+        margin: 5,
+        imageSize: logoSize / 100, // Use current state
+        hideBackgroundDots: true,
+      };
+
       const processedImageUrl = await processImage(imageUrl, shape, 200, opacity);
       setLogoPreviewUrl(processedImageUrl);
        setOptions(prev => ({
            ...prev,
            image: processedImageUrl,
-           imageOptions: {
-            ...prev.imageOptions,
+           imageOptions: { // Update image options safely
+             ...currentImageOptions,
+             // imageSize is updated separately via handleLogoSizeChange
            }
        }));
     } catch (error) {
         console.error("Error processing logo image:", error);
         toast({ variant: "destructive", title: "Logo Error", description: "Could not process the logo image." });
-        setLogoPreviewUrl(imageUrl);
-         setOptions(prev => ({ ...prev, image: imageUrl }));
+        setLogoPreviewUrl(imageUrl); // Fallback to original if processing fails
+         setOptions(prev => ({ ...prev, image: imageUrl })); // Use original URL as image
     }
- }, [logoSize]);
+ // eslint-disable-next-line react-hooks/exhaustive-deps
+ }, [logoShape, logoOpacity, options.imageOptions]); // Add options.imageOptions dependency
 
 
  const handleLogoUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -414,7 +428,7 @@ export function QrCodeGenerator() {
  };
 
 
- // --- Expiry Handling --- (unchanged logic)
+ // --- Expiry Handling (UI Only) ---
   const handleSetExpiryPreset = (duration: '1h' | '24h' | '7d' | null) => {
       let expiry: Date | undefined = undefined;
       if (duration !== null) {
@@ -430,17 +444,20 @@ export function QrCodeGenerator() {
           setExpiryTime("00:00");
       }
        setExpiryDate(expiry);
-       toast({ title: "Expiry Set (UI Only)", description: "QR code expiry requires backend implementation to function." });
+       // Clarify that this is UI only
+       toast({ title: "Expiry Set (UI Only)", description: "This setting is visual. QR code expiry requires a backend redirect service to function." });
   };
 
  const handleManualExpiryChange = (date: Date | undefined) => {
      setExpiryDate(date);
      if (date) {
          const [hours, minutes] = expiryTime.split(':').map(Number);
-         date.setHours(hours, minutes, 0, 0);
-         setExpiryDate(new Date(date));
+         const combinedDate = new Date(date);
+         combinedDate.setHours(hours, minutes, 0, 0);
+         setExpiryDate(new Date(combinedDate)); // Ensure state update
      }
-      toast({ title: "Expiry Set (UI Only)", description: "QR code expiry requires backend implementation to function." });
+      // Clarify that this is UI only
+      toast({ title: "Expiry Set (UI Only)", description: "This setting is visual. QR code expiry requires a backend redirect service to function." });
  };
 
  const handleTimeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -448,26 +465,33 @@ export function QrCodeGenerator() {
      setExpiryTime(timeValue);
      if (expiryDate) {
          const [hours, minutes] = timeValue.split(':').map(Number);
-         const updatedDate = new Date(expiryDate);
+         const updatedDate = new Date(expiryDate); // Create a new Date object to avoid mutation issues
          updatedDate.setHours(hours, minutes, 0, 0);
          setExpiryDate(updatedDate);
-          toast({ title: "Expiry Set (UI Only)", description: "QR code expiry requires backend implementation to function." });
+          // Clarify that this is UI only
+          toast({ title: "Expiry Set (UI Only)", description: "This setting is visual. QR code expiry requires a backend redirect service to function." });
      }
  }
 
- // --- Download --- (unchanged logic)
+ // --- Download ---
   const onDownloadClick = useCallback(() => {
     if (!qrCodeInstance) return;
 
+    // Add a reminder that expiry is not included in the direct QR download
+    if (expiryDate) {
+        toast({ title: "Downloading Direct QR", description: "The downloaded QR contains the direct data. The expiry setting is visual and requires a backend service.", duration: 5000 });
+    }
+
     if (qrLabel) {
-         toast({ title: "Label Download (Not Implemented)", description: "Downloading with label requires advanced canvas drawing. Downloading QR only." });
+         // Label functionality is complex and not implemented for direct download
+         toast({ title: "Label Not Included", description: "Downloading the QR code only. Labels require advanced canvas drawing not implemented here.", duration: 5000 });
     }
 
     qrCodeInstance.download({ name: `linkspark-qr-${qrType}`, extension: fileExtension });
-  }, [qrCodeInstance, fileExtension, qrType, qrLabel]);
+  }, [qrCodeInstance, fileExtension, qrType, qrLabel, expiryDate]);
 
 
-  // --- Render Dynamic Inputs --- (re-added cases for Wifi, Email, Phone, WhatsApp, SMS, Location, Event, vCard)
+  // --- Render Dynamic Inputs ---
   const renderInputs = () => {
     switch (qrType) {
       case 'url':
@@ -662,7 +686,7 @@ export function QrCodeGenerator() {
                 </div>
             </div>
            );
-        case 'wifi': // Added Wi-Fi inputs back
+        case 'wifi':
             return (
                 <div className="space-y-4">
                     <div className="space-y-2">
@@ -686,8 +710,7 @@ export function QrCodeGenerator() {
                         </Select>
                     </div>
                     <div className="flex items-center space-x-2">
-                       {/* Removed Checkbox import, need to re-add if checkbox is used */}
-                       {/* <Checkbox id="wifi-hidden" checked={!!inputData.wifi_hidden} onCheckedChange={(checked) => handleCheckboxChange('wifi_hidden', Boolean(checked))} /> */}
+                       {/* Assuming Checkbox is imported if needed, using native input for now */}
                        <input type="checkbox" id="wifi-hidden" checked={!!inputData.wifi_hidden} onChange={(e) => handleCheckboxChange('wifi_hidden', e.target.checked)} className="h-4 w-4 rounded border-primary text-primary focus:ring-primary" />
                         <Label htmlFor="wifi-hidden" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
                             Hidden Network
@@ -701,7 +724,7 @@ export function QrCodeGenerator() {
   };
 
 
-  // --- Main Render --- (unchanged structure, but updated QR type options)
+  // --- Main Render ---
   return (
     <div className="w-full max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-8">
         {/* Options Panel */}
@@ -710,7 +733,7 @@ export function QrCodeGenerator() {
             <CardTitle>QR Code Options</CardTitle>
           </CardHeader>
           <CardContent className="space-y-6">
-             {/* QR Type Selection (updated options) */}
+             {/* QR Type Selection */}
              <div className="space-y-2">
                 <Label htmlFor="qr-type">QR Code Type</Label>
                 <Select onValueChange={(value: QrType) => setQrType(value)} defaultValue={qrType}>
@@ -730,20 +753,20 @@ export function QrCodeGenerator() {
                 </Select>
              </div>
 
-             {/* Dynamic Inputs (rendered based on available types) */}
+             {/* Dynamic Inputs */}
              <div className="border p-4 rounded-md bg-muted/20">
                 {renderInputs()}
              </div>
 
-             {/* Customization Tabs (unchanged structure) */}
+             {/* Customization Tabs */}
               <Tabs defaultValue="styling" className="w-full">
                   <TabsList className="grid w-full grid-cols-3">
                     <TabsTrigger value="styling"><Palette className="inline-block mr-1 h-4 w-4" /> Styling</TabsTrigger>
                     <TabsTrigger value="logo"><ImageIcon className="inline-block mr-1 h-4 w-4" /> Logo</TabsTrigger>
-                    <TabsTrigger value="expiry"><Clock className="inline-block mr-1 h-4 w-4" /> Expiry</TabsTrigger>
+                    <TabsTrigger value="expiry"><Clock className="inline-block mr-1 h-4 w-4" /> Expiry (UI)</TabsTrigger>
                   </TabsList>
 
-                  {/* Styling Tab (unchanged) */}
+                  {/* Styling Tab */}
                   <TabsContent value="styling" className="pt-4 space-y-6">
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                            <div className="space-y-2">
@@ -766,7 +789,7 @@ export function QrCodeGenerator() {
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                          <div className="space-y-2">
                             <Label htmlFor="dot-style">Dot Style</Label>
-                            <Select onValueChange={(value: DotType) => handleDotStyleChange(value)} defaultValue={options.dotsOptions.type}>
+                            <Select onValueChange={(value: DotType) => handleDotStyleChange(value)} defaultValue={options.dotsOptions?.type}>
                                 <SelectTrigger id="dot-style"><SelectValue /></SelectTrigger>
                                 <SelectContent>{dotTypes.map(type => <SelectItem key={type} value={type}>{type}</SelectItem>)}</SelectContent>
                             </Select>
@@ -791,12 +814,12 @@ export function QrCodeGenerator() {
                           <Slider id="qr-size" defaultValue={[options.width ?? 256]} min={100} max={1000} step={4} onValueChange={handleQrSizeChange} />
                       </div>
                        <div className="space-y-2">
-                           <Label htmlFor="qr-label">Label Text (Optional)</Label>
+                           <Label htmlFor="qr-label">Label Text (Optional, Visual Only)</Label>
                            <Input id="qr-label" type="text" value={qrLabel} onChange={(e) => setQrLabel(e.target.value)} placeholder="e.g., Scan Me!" maxLength={30} />
                        </div>
                   </TabsContent>
 
-                  {/* Logo Tab (unchanged) */}
+                  {/* Logo Tab */}
                   <TabsContent value="logo" className="pt-4 space-y-6">
                      <div className="space-y-2">
                          <Label htmlFor="logo-upload">Center Logo/Image</Label>
@@ -812,7 +835,7 @@ export function QrCodeGenerator() {
                          </div>
                          {logoPreviewUrl && (
                              <div className="mt-2 text-xs text-muted-foreground flex items-center gap-2">
-                                <img src={logoPreviewUrl} alt="Preview" className="h-10 w-10 rounded object-contain border" style={{ backgroundColor: options.backgroundOptions.color }} />
+                                <img src={logoPreviewUrl} alt="Preview" className="h-10 w-10 rounded object-contain border" style={{ backgroundColor: options.backgroundOptions?.color }} />
                                 <span>Logo selected</span>
                              </div>
                          )}
@@ -842,9 +865,9 @@ export function QrCodeGenerator() {
                     )}
                   </TabsContent>
 
-                    {/* Expiry Tab (unchanged) */}
+                    {/* Expiry Tab (UI Only) */}
                    <TabsContent value="expiry" className="pt-4 space-y-6">
-                        <p className="text-sm text-muted-foreground">Set an optional expiration date/time. (Note: Requires backend integration to be functional).</p>
+                        <p className="text-sm text-muted-foreground">Set an optional expiration date/time. <strong className='text-foreground/80'>(Note: This is a UI feature only. True expiry requires a backend service).</strong></p>
                         <div className="flex flex-wrap gap-2">
                             <Button variant={!expiryDate ? "secondary" : "outline"} size="sm" onClick={() => handleSetExpiryPreset(null)}>No Expiry</Button>
                             <Button variant={expiryDate && Math.abs(new Date().getTime() + 1*60*60*1000 - expiryDate.getTime()) < 1000 ? "secondary" : "outline"} size="sm" onClick={() => handleSetExpiryPreset('1h')}>1 Hour</Button>
@@ -878,14 +901,14 @@ export function QrCodeGenerator() {
           </CardContent>
         </Card>
 
-        {/* QR Preview Panel (unchanged) */}
+        {/* QR Preview Panel */}
         <Card className="md:col-span-1 order-1 md:order-2 sticky top-20 self-start"> {/* Sticky preview */}
           <CardHeader>
             <CardTitle>QR Code Preview</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col items-center justify-center space-y-4">
              {/* QR Code Preview Area */}
-            <div ref={qrPreviewRef} className="border rounded-md overflow-hidden shadow-inner flex items-center justify-center bg-white" style={{ width: options.width, height: options.height }}>
+            <div ref={qrPreviewRef} className="border rounded-md overflow-hidden shadow-inner flex items-center justify-center bg-white" style={{ width: options.width ?? 256, height: options.height ?? 256 }}>
                 {/* QR code gets appended here */}
                 {!qrCodeInstance && <p className="text-muted-foreground text-sm p-4">Generating QR...</p>}
             </div>
@@ -917,4 +940,3 @@ export function QrCodeGenerator() {
     </div>
   );
 }
-
