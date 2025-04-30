@@ -20,7 +20,7 @@ import { toast } from '@/hooks/use-toast';
 import { useRouter } from 'next/navigation';
 
 // Define allowed QR types
-type QrType = 'url' | 'text' | 'email' | 'phone' | 'whatsapp' | 'sms' | 'location' | 'event' | 'vcard' | 'wifi' | 'password' | 'audiovisual';
+type QrType = 'url' | 'text' | 'email' | 'phone' | 'whatsapp' | 'sms' | 'location' | 'event' | 'vcard' | 'wifi';
 
 // QR type options
 const qrTypeOptions: { value: QrType; label: string; icon: React.ElementType }[] = [
@@ -34,16 +34,12 @@ const qrTypeOptions: { value: QrType; label: string; icon: React.ElementType }[]
   { value: 'event', label: 'Calendar Event', icon: CalendarIcon },
   { value: 'vcard', label: 'Contact Card (vCard)', icon: User },
   { value: 'wifi', label: 'Wi-Fi Network', icon: Wifi },
-    // Added new feature types
-  { value: 'password', label: 'Password Protected', icon: Settings2 }, // Example icon
-  { value: 'audiovisual', label: 'Audio/Visual Message', icon: Upload }, // Example icon
 ];
 
 const dotTypes: DotType[] = ['square', 'dots', 'rounded', 'classy', 'classy-rounded', 'extra-rounded'];
 const cornerSquareTypes: CornerSquareType[] = ['square', 'extra-rounded', 'dot'];
 const cornerDotTypes: CornerDotType[] = ['square', 'dot'];
 const wifiEncryptionTypes = ['WPA/WPA2', 'WEP', 'None'];
-const audiovisualTypes = ['audio', 'video']; // Define AV types
 
 
 const defaultOptions: QRCodeStylingOptions = {
@@ -192,10 +188,11 @@ const processImage = (
 // Helper function to generate a simple redirect URL structure (conceptual)
 // In a real app, this would involve a backend service.
 const generateRedirectUrl = (type: QrType, data: Record<string, any>, expiry?: Date): string => {
-    const baseAppUrl = typeof window !== 'undefined' ? window.location.origin : 'https://linkspark.com'; // Use current origin or fallback
+    // Use current origin if available, otherwise default (client-side only)
+    const baseAppUrl = typeof window !== 'undefined' ? window.location.origin : '';
     let targetUrl = '';
 
-    // Construct the target URL based on the QR type (this part remains similar)
+    // Construct the target URL based on the QR type
      switch (type) {
       case 'url': targetUrl = data.url || ''; break;
       case 'text': targetUrl = `data:text/plain;charset=utf-8,${encodeURIComponent(data.text || '')}`; break; // Example for text
@@ -230,30 +227,27 @@ const generateRedirectUrl = (type: QrType, data: Record<string, any>, expiry?: D
               wifi_encryption: data.wifi_encryption || 'WPA/WPA2', wifi_hidden: data.wifi_hidden || false,
           });
            break;
-        case 'password':
-           targetUrl = `${baseAppUrl}/protected?data=${btoa(encodeURIComponent(data.protected_content || ''))}&pwhash=${btoa(data.protected_password || '')}`; // Conceptual hash
-           break;
-        case 'audiovisual':
-           targetUrl = data.av_url || ''; // Assuming av_url holds the hosted file link
-            break;
+
       default: targetUrl = '';
     }
 
-    // If no expiry, return the direct target URL
-    if (!expiry) {
+    // If no expiry or no baseAppUrl (server-side rendering context), return the direct target URL
+    if (!expiry || !baseAppUrl) {
         return targetUrl;
     }
 
     // Conceptual: Create a URL that points to *our* backend service
     // The backend would handle the expiry check and redirect
-    // Example: https://linkspark.com/qr/UNIQUE_ID
-    // For this frontend-only demo, we'll create a structured URL with expiry info
-    // WARNING: This is easily bypassable as expiry is in the URL itself.
+    // Example: https://YOUR_APP_DOMAIN/redirect?id=UNIQUE_ID
+    // For this frontend-only demo, we'll create a structured URL with expiry info embedded.
+    // WARNING: This is easily bypassable as expiry is in the URL itself. Not secure.
     const expiryTimestamp = expiry.toISOString();
     const params = new URLSearchParams();
     params.set('target', btoa(targetUrl)); // Base64 encode target URL
     params.set('expires', expiryTimestamp);
 
+    // This URL points to a *potential* API route or page on your Next.js app
+    // that would handle the logic.
     return `${baseAppUrl}/redirect?${params.toString()}`;
 };
 
@@ -274,14 +268,10 @@ export function QrCodeGenerator() {
   const [expiryDate, setExpiryDate] = useState<Date | undefined>(undefined);
   const [expiryTime, setExpiryTime] = useState<string>("00:00"); // HH:mm format
   const [wifiPasswordVisible, setWifiPasswordVisible] = useState<boolean>(true); // State for Wi-Fi password visibility
-  const [avFile, setAvFile] = useState<File | null>(null); // State for audio/visual file
-  const [avFileType, setAvFileType] = useState<'audio' | 'video' | null>(null); // State for AV file type
-  const [avPreviewUrl, setAvPreviewUrl] = useState<string | null>(null); // State for AV preview URL
 
 
   const qrPreviewRef = useRef<HTMLDivElement>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
-  const avInputRef = useRef<HTMLInputElement>(null); // Ref for AV file input
   const router = useRouter(); // Initialize router
 
   // Generate QR Data String based on type, inputData, and expiryDate
@@ -291,34 +281,27 @@ export function QrCodeGenerator() {
   }, [qrType, inputData, expiryDate]); // expiryDate is now a dependency
 
 
-  // Initialize QR Code instance
+  // Initialize or Update QR Code instance
   useEffect(() => {
+    const data = generateQrData();
     if (!qrCodeInstance && qrPreviewRef.current) {
-        const instance = new QRCodeStyling({
-            ...options,
-            data: generateQrData(), // Use the generated data
-            width: options.width || 256,
-            height: options.height || 256,
-        });
-        setQrCodeInstance(instance);
+      const instance = new QRCodeStyling({
+        ...options,
+        data: data,
+        width: options.width || 256,
+        height: options.height || 256,
+      });
+      instance.append(qrPreviewRef.current); // Append directly on creation
+      setQrCodeInstance(instance);
     } else if (qrCodeInstance) {
-         qrCodeInstance.update({
-            ...options,
-            data: generateQrData(), // Update with potentially new data
-            width: options.width || 256,
-            height: options.height || 256,
-         });
+      qrCodeInstance.update({
+        ...options,
+        data: data,
+        width: options.width || 256,
+        height: options.height || 256,
+      });
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [options, generateQrData]); // Only re-run when options or generated data changes
-
-  // Append QR Code to the DOM - only when instance changes or ref becomes available
-  useEffect(() => {
-    if (qrPreviewRef.current && qrCodeInstance) {
-      qrPreviewRef.current.innerHTML = ''; // Clear previous QR code
-      qrCodeInstance.append(qrPreviewRef.current);
-    }
-  }, [qrCodeInstance, qrPreviewRef]);
+  }, [options, generateQrData, qrCodeInstance]); // Added qrCodeInstance dependency
 
 
   // --- Input Handlers ---
@@ -470,125 +453,92 @@ export function QrCodeGenerator() {
               case '24h': expiry.setDate(now.getDate() + 1); break;
               case '7d': expiry.setDate(now.getDate() + 7); break;
           }
+          // Set time state based on the calculated expiry
           setExpiryTime(format(expiry, "HH:mm"));
-           toast({ title: "Expiry Set", description: `QR code will expire ${duration === '1h' ? 'in 1 hour' : duration === '24h' ? 'in 24 hours' : 'in 7 days'}. This requires a backend redirect service.` });
+           toast({ title: "Expiry Set", description: `QR code will expire ${duration === '1h' ? 'in 1 hour' : duration === '24h' ? 'in 24 hours' : 'in 7 days'}. Note: Expiry requires a backend service.` });
       } else {
+          // Reset time state when removing expiry
           setExpiryTime("00:00");
            toast({ title: "Expiry Removed", description: "QR code will not expire." });
       }
+       // Update the main expiryDate state
        setExpiryDate(expiry);
-
  };
+
 
  const handleManualExpiryChange = (date: Date | undefined) => {
      let combinedDate: Date | undefined = undefined;
      if (date) {
          const [hours, minutes] = expiryTime.split(':').map(Number);
          combinedDate = new Date(date);
-         combinedDate.setHours(hours, minutes, 0, 0);
+         combinedDate.setHours(hours, minutes, 0, 0); // Set hours and minutes from state
 
-         // Ensure the date is not in the past
+         // Prevent setting expiry in the past
          if (combinedDate < new Date()) {
              toast({ variant: "destructive", title: "Invalid Date", description: "Expiry date cannot be in the past." });
-             combinedDate = undefined; // Reset if invalid
+             // Reset or keep previous valid state - here we reset to undefined
+             combinedDate = undefined;
+             setExpiryDate(undefined); // Also update state
+             setExpiryTime("00:00"); // Reset time input state
          } else {
-             toast({ title: "Expiry Set", description: `QR code will expire on ${format(combinedDate, "PPP 'at' HH:mm")}. This requires a backend redirect service.` });
+             setExpiryDate(combinedDate); // Update state only if valid
+             toast({ title: "Expiry Set", description: `QR code will expire on ${format(combinedDate, "PPP 'at' HH:mm")}. Note: Expiry requires a backend service.` });
          }
      } else {
+         // Clear expiry
+         setExpiryDate(undefined);
+         setExpiryTime("00:00");
          toast({ title: "Expiry Removed", description: "QR code will not expire." });
      }
-     setExpiryDate(combinedDate);
  };
 
 
  const handleTimeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
      const timeValue = e.target.value;
-     setExpiryTime(timeValue);
+     setExpiryTime(timeValue); // Update time state immediately
+
+     // If a date is already set, update the expiryDate state with the new time
      if (expiryDate) {
          const [hours, minutes] = timeValue.split(':').map(Number);
-         const updatedDate = new Date(expiryDate);
-         updatedDate.setHours(hours, minutes, 0, 0);
+         const updatedDate = new Date(expiryDate); // Start with the existing date
+         updatedDate.setHours(hours, minutes, 0, 0); // Apply the new time
 
+         // Check if the new date/time is in the past
          if (updatedDate < new Date()) {
-              toast({ variant: "destructive", title: "Invalid Time", description: "Expiry time cannot be in the past." });
-              // Optionally reset time or prevent update
-              // For now, we'll allow setting it but keep the date state consistent
-               setExpiryDate(undefined); // Or revert time, depending on desired UX
+             toast({ variant: "destructive", title: "Invalid Time", description: "Expiry time cannot be in the past for the selected date." });
+             // Revert time state or clear date? Let's revert time for now
+             setExpiryTime(format(expiryDate, "HH:mm")); // Revert to previous valid time
          } else {
-             setExpiryDate(updatedDate);
-              toast({ title: "Expiry Time Updated", description: `QR code will expire on ${format(updatedDate, "PPP 'at' HH:mm")}. This requires a backend redirect service.` });
+             setExpiryDate(updatedDate); // Update the full expiry date state
+             toast({ title: "Expiry Time Updated", description: `QR code will expire on ${format(updatedDate, "PPP 'at' HH:mm")}. Note: Expiry requires a backend service.` });
          }
      }
+     // If no date is set, just updating the time state is fine, it will be applied when a date is picked.
  }
 
-
- // --- Audio/Visual Handling ---
- const handleAvUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-     const file = e.target.files?.[0];
-     if (file) {
-         const fileType = file.type.startsWith('audio/') ? 'audio' : file.type.startsWith('video/') ? 'video' : null;
-         if (fileType) {
-             setAvFile(file);
-             setAvFileType(fileType);
-             const reader = new FileReader();
-             reader.onloadend = () => {
-                 const dataUrl = reader.result as string;
-                 setAvPreviewUrl(dataUrl); // For potential preview
-                 // Simulate hosting: In a real app, upload to a server and get a URL
-                 // For demo, store data URL in inputData (very limited size)
-                 handleInputChange('av_url', dataUrl); // Store data URL as the 'hosted' URL
-                 toast({ title: "File Ready", description: `${fileType === 'audio' ? 'Audio' : 'Video'} file '${file.name}' ready for QR generation (using data URL).` });
-             };
-             reader.readAsDataURL(file);
-         } else {
-             toast({ variant: "destructive", title: "Invalid File Type", description: "Please upload an audio or video file." });
-             removeAvFile();
-         }
-     } else {
-         removeAvFile();
-     }
- };
-
- const triggerAvUpload = () => {
-     avInputRef.current?.click();
- };
-
- const removeAvFile = () => {
-     setAvFile(null);
-     setAvFileType(null);
-     setAvPreviewUrl(null);
-     handleInputChange('av_url', ''); // Clear the URL
-     if (avInputRef.current) avInputRef.current.value = '';
- };
 
 
 
  // --- Download ---
   const onDownloadClick = useCallback(() => {
-    if (!qrCodeInstance) return;
+    if (!qrCodeInstance || !generateQrData()) {
+        toast({ variant: "destructive", title: "Cannot Download", description: "Please enter data to generate the QR code first." });
+        return;
+    };
 
     // Add a reminder that expiry requires a backend
     if (expiryDate) {
-        toast({ title: "Downloading QR", description: "Note: Expiry functionality requires a backend service.", duration: 5000 });
+        toast({ title: "Downloading QR", description: "Note: Expiry functionality requires a backend service for redirection.", duration: 5000 });
     }
 
     if (qrLabel) {
          // Label functionality is complex and not implemented for direct download
-         toast({ title: "Label Not Included", description: "Downloading the QR code only. Labels require advanced canvas drawing not implemented here.", duration: 5000 });
+         toast({ title: "Label Not Included", description: "Downloading the QR code only. Labels are for preview only.", duration: 5000 });
     }
 
-     // Add reminder for password protection
-    if (qrType === 'password') {
-        toast({ title: "Downloading QR", description: "Password protection requires a backend page to verify.", duration: 5000 });
-    }
-
-     // Add reminder for AV files
-    if (qrType === 'audiovisual' && inputData.av_url?.startsWith('data:')) {
-        toast({ title: "Downloading QR", description: "AV QR uses a data URL. Size limits apply; real hosting recommended.", duration: 6000 });
-    }
 
     qrCodeInstance.download({ name: `linkspark-qr-${qrType}`, extension: fileExtension });
-  }, [qrCodeInstance, fileExtension, qrType, qrLabel, expiryDate, inputData.av_url]); // Added inputData.av_url dependency
+  }, [qrCodeInstance, fileExtension, qrType, qrLabel, expiryDate, generateQrData]); // Added generateQrData dependency
 
 
   // --- Render Dynamic Inputs ---
@@ -818,51 +768,7 @@ export function QrCodeGenerator() {
                     </div>
                 </div>
             );
-       // Inputs for new features
-       case 'password':
-            return (
-                <div className="space-y-4">
-                     <p className="text-sm text-muted-foreground">Create a QR code that redirects to a password-protected page (requires backend setup).</p>
-                    <div className="space-y-2">
-                        <Label htmlFor="protected-content">Content to Protect</Label>
-                        <Textarea id="protected-content" value={inputData.protected_content || ''} onChange={(e) => handleInputChange('protected_content', e.target.value)} placeholder="Enter the text or URL to hide..." rows={4} required />
-                    </div>
-                    <div className="space-y-2">
-                        <Label htmlFor="protected-password">Password</Label>
-                        <Input id="protected-password" type="password" value={inputData.protected_password || ''} onChange={(e) => handleInputChange('protected_password', e.target.value)} placeholder="Enter a password" required />
-                    </div>
-                </div>
-            );
-        case 'audiovisual':
-            return (
-                <div className="space-y-4">
-                     <p className="text-sm text-muted-foreground">Upload an audio or video file to link in the QR code (uses data URL for demo, size limits apply).</p>
-                    <div className="space-y-2">
-                         <Label htmlFor="av-upload">Upload Audio/Video File</Label>
-                         <div className="flex items-center gap-4">
-                             <Button variant="outline" onClick={triggerAvUpload} className="flex-grow justify-start text-left font-normal">
-                                <Upload className="mr-2 h-4 w-4" />
-                                {avFile ? `Change File (${avFileType})` : "Upload Audio or Video"}
-                            </Button>
-                            <Input ref={avInputRef} id="av-upload" type="file" accept="audio/*,video/*" onChange={handleAvUpload} className="hidden" />
-                            {avFile && (
-                                <Button variant="destructive" size="sm" onClick={removeAvFile}><Trash2 className="h-4 w-4" /></Button>
-                            )}
-                         </div>
-                         {avPreviewUrl && avFileType && (
-                             <div className="mt-4 space-y-2">
-                                 <Label>Preview</Label>
-                                {avFileType === 'audio' ? (
-                                    <audio controls src={avPreviewUrl} className="w-full"> Your browser does not support the audio element. </audio>
-                                ) : (
-                                     <video controls src={avPreviewUrl} className="w-full max-h-60 rounded border"> Your browser does not support the video tag. </video>
-                                )}
-                                <p className="text-xs text-muted-foreground">{avFile?.name} ({Math.round((avFile?.size || 0) / 1024)} KB)</p>
-                             </div>
-                         )}
-                     </div>
-                </div>
-            );
+
       default:
         return null;
     }
@@ -1079,7 +985,7 @@ export function QrCodeGenerator() {
             </div>
           </CardContent>
            <CardFooter>
-              <Button onClick={onDownloadClick} className="w-full" disabled={!qrCodeInstance || !generateQrData()}>
+              <Button onClick={onDownloadClick} className="w-full" disabled={!generateQrData()}>
                 <Download className="mr-2 h-4 w-4" /> Download QR Code ({fileExtension.toUpperCase()})
               </Button>
            </CardFooter>
@@ -1087,3 +993,4 @@ export function QrCodeGenerator() {
     </div>
   );
 }
+
