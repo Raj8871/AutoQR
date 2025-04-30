@@ -47,7 +47,7 @@ const defaultOptions: QRCodeStylingOptions = {
   width: 256,
   height: 256,
   type: 'svg',
-  data: 'https://linkspark.com', // Restore default data
+  data: '', // Default data is now empty
   image: '',
   dotsOptions: {
     color: '#008080', // Teal accent color
@@ -232,7 +232,7 @@ const generateQrDataString = (type: QrType, data: Record<string, any>): string =
 
 export function QrCodeGenerator() {
   const [qrType, setQrType] = useState<QrType>('url');
-  const [inputData, setInputData] = useState<Record<string, any>>({ url: 'https://linkspark.com' }); // Store data for each type - restore default URL
+  const [inputData, setInputData] = useState<Record<string, any>>({ url: '' }); // Initialize URL as empty
   const [options, setOptions] = useState<QRCodeStylingOptions>(defaultOptions);
   const [qrCodeInstance, setQrCodeInstance] = useState<QRCodeStyling | null>(null);
   const [fileExtension, setFileExtension] = useState<FileExtension>('png');
@@ -255,12 +255,16 @@ export function QrCodeGenerator() {
   const generateQrData = useCallback((): string => {
       // Use the helper function to generate the data string
       return generateQrDataString(qrType, inputData);
-  }, [qrType, inputData]); // Removed expiryDate dependency
+  }, [qrType, inputData]);
 
 
   // Initialize QR Code instance on mount
   useEffect(() => {
     if (!qrCodeInstance && qrPreviewRef.current) {
+      // Ensure the preview div is empty before appending
+      while (qrPreviewRef.current.firstChild) {
+          qrPreviewRef.current.removeChild(qrPreviewRef.current.firstChild);
+      }
       const instance = new QRCodeStyling({
         ...options, // Use initial options
         data: generateQrData(), // Generate initial data
@@ -270,10 +274,6 @@ export function QrCodeGenerator() {
       instance.append(qrPreviewRef.current);
       setQrCodeInstance(instance);
     }
-    // Cleanup on unmount
-    return () => {
-       // No need to manually remove child if append is used correctly
-    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Run only once on mount
 
