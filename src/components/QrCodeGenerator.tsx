@@ -13,17 +13,16 @@ import { Textarea } from '@/components/ui/textarea';
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Calendar } from "@/components/ui/calendar"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-// Removed Checkbox as it was only used for Wi-Fi
-import { Download, Image as ImageIcon, Link as LinkIcon, Phone, Mail, MessageSquare, MapPin, Calendar as CalendarIcon, User, Settings2, Palette, Shapes, Clock } from 'lucide-react'; // Removed Wifi, Mic, Lock, Globe, View, Eye, EyeOff
+import { Download, Image as ImageIcon, Link as LinkIcon, Phone, Mail, MessageSquare, MapPin, Calendar as CalendarIcon, User, Settings2, Palette, Shapes, Clock, Wifi } from 'lucide-react'; // Added Wifi, Phone, Mail, MessageSquare, MapPin, CalendarIcon, User icons back
 import { format } from "date-fns"
 import { cn } from '@/lib/utils';
 import { toast } from '@/hooks/use-toast';
 import { useRouter } from 'next/navigation';
 
-// Define allowed QR types after removal
-type QrType = 'url' | 'text' | 'email' | 'phone' | 'whatsapp' | 'sms' | 'location' | 'event' | 'vcard';
+// Define allowed QR types including previously removed ones
+type QrType = 'url' | 'text' | 'email' | 'phone' | 'whatsapp' | 'sms' | 'location' | 'event' | 'vcard' | 'wifi';
 
-// Updated options list removing Wifi, Voice, Password, Landing, AR
+// Updated options list re-adding previously removed types
 const qrTypeOptions: { value: QrType; label: string; icon: React.ElementType }[] = [
   { value: 'url', label: 'Website URL', icon: LinkIcon },
   { value: 'text', label: 'Plain Text', icon: MessageSquare },
@@ -34,12 +33,14 @@ const qrTypeOptions: { value: QrType; label: string; icon: React.ElementType }[]
   { value: 'location', label: 'Google Maps Location', icon: MapPin },
   { value: 'event', label: 'Calendar Event', icon: CalendarIcon },
   { value: 'vcard', label: 'Contact Card (vCard)', icon: User },
+  { value: 'wifi', label: 'Wi-Fi Network', icon: Wifi }, // Added Wifi back
 ];
 
 const dotTypes: DotType[] = ['square', 'dots', 'rounded', 'classy', 'classy-rounded', 'extra-rounded'];
 const cornerSquareTypes: CornerSquareType[] = ['square', 'extra-rounded', 'dot'];
 const cornerDotTypes: CornerDotType[] = ['square', 'dot'];
-// Removed wifiEncryptionTypes
+const wifiEncryptionTypes = ['WPA/WPA2', 'WEP', 'None']; // Added Wifi encryption types back
+
 
 const defaultOptions: QRCodeStylingOptions = {
   width: 256,
@@ -76,7 +77,7 @@ const defaultOptions: QRCodeStylingOptions = {
   },
 };
 
-// Helper function to format vCard data (unchanged)
+// Helper function to format vCard data
 const formatVCard = (data: Record<string, string>): string => {
   let vCardString = 'BEGIN:VCARD\nVERSION:3.0\n';
   if (data.firstName || data.lastName) vCardString += `N:${data.lastName || ''};${data.firstName || ''}\n`;
@@ -92,7 +93,7 @@ const formatVCard = (data: Record<string, string>): string => {
   return vCardString;
 };
 
-// Helper function to format ICS data (unchanged)
+// Helper function to format ICS data
 const formatICS = (data: Record<string, any>): string => {
     const formatDate = (date: Date | null | undefined): string => {
       if (!date) return '';
@@ -115,7 +116,20 @@ const formatICS = (data: Record<string, any>): string => {
     return icsString;
 }
 
-// Removed formatWifi function
+// Helper function to format Wi-Fi data
+const formatWifi = (data: Record<string, any>): string => {
+    const escapeValue = (value: string = '') => {
+        // Escape special characters: \, ;, ,, ", :
+        return value.replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/"/g, '\\"').replace(/:/g, '\\:');
+    };
+    const ssid = escapeValue(data.wifi_ssid);
+    const password = escapeValue(data.wifi_password);
+    const encryption = data.wifi_encryption === 'None' ? 'nopass' : data.wifi_encryption;
+    const hidden = data.wifi_hidden ? 'true' : 'false';
+
+    return `WIFI:T:${encryption};S:${ssid};P:${password};H:${hidden};;`;
+};
+
 
 // Helper to process image for shape/opacity (using Canvas) - unchanged
 const processImage = (
@@ -185,15 +199,14 @@ export function QrCodeGenerator() {
   const [qrLabel, setQrLabel] = useState<string>('');
   const [expiryDate, setExpiryDate] = useState<Date | undefined>(undefined);
   const [expiryTime, setExpiryTime] = useState<string>("00:00"); // HH:mm format
-  // Removed wifiPasswordVisible, qrPasswordVisible, voiceFile, arFile, landingPagePreview state
+  const [wifiPasswordVisible, setWifiPasswordVisible] = useState<boolean>(true); // State for Wi-Fi password visibility
+
 
   const qrPreviewRef = useRef<HTMLDivElement>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
-  // Removed voiceInputRef, arInputRef refs
-  // Removed voiceAudioRef
   const router = useRouter(); // Initialize router
 
-  // Generate QR Data String based on type and inputData - removed Wifi, Voice, Password, Landing, AR cases
+  // Generate QR Data String based on type and inputData - re-added Wifi, Email, Phone, WhatsApp, SMS, Location, Event, vCard cases
   const generateQrData = useCallback((): string => {
     switch (qrType) {
       case 'url':
@@ -232,7 +245,13 @@ export function QrCodeGenerator() {
             website: inputData.vcard_website,
             address: inputData.vcard_address,
         });
-      // Removed cases for 'wifi', 'voice', 'password', 'landing', 'ar'
+      case 'wifi': // Added Wi-Fi case back
+        return formatWifi({
+            wifi_ssid: inputData.wifi_ssid,
+            wifi_password: inputData.wifi_password,
+            wifi_encryption: inputData.wifi_encryption || 'WPA/WPA2',
+            wifi_hidden: inputData.wifi_hidden || false,
+        });
       default:
         return '';
     }
@@ -272,7 +291,11 @@ export function QrCodeGenerator() {
     setInputData(prev => ({ ...prev, [key]: value }));
   };
 
-  // Removed handleCheckboxChange as checkbox is no longer used
+  // Handle checkbox changes (re-added for Wi-Fi hidden)
+  const handleCheckboxChange = (key: string, checked: boolean) => {
+    setInputData(prev => ({ ...prev, [key]: checked }));
+  };
+
 
   const handleDateChange = (key: string, date: Date | undefined) => {
     setInputData(prev => ({ ...prev, [key]: date }));
@@ -432,12 +455,6 @@ export function QrCodeGenerator() {
      }
  }
 
- // --- Removed File Handlers (Voice & AR) ---
- // Removed handleFileChange, triggerFileUpload, removeFile
-
- // --- Removed Landing Page Preview ---
- // Removed useEffect for landing page preview
-
  // --- Download --- (unchanged logic)
   const onDownloadClick = useCallback(() => {
     if (!qrCodeInstance) return;
@@ -450,7 +467,7 @@ export function QrCodeGenerator() {
   }, [qrCodeInstance, fileExtension, qrType, qrLabel]);
 
 
-  // --- Render Dynamic Inputs --- (removed cases for Wifi, Voice, Password, Landing, AR)
+  // --- Render Dynamic Inputs --- (re-added cases for Wifi, Email, Phone, WhatsApp, SMS, Location, Event, vCard)
   const renderInputs = () => {
     switch (qrType) {
       case 'url':
@@ -645,14 +662,46 @@ export function QrCodeGenerator() {
                 </div>
             </div>
            );
-        // Removed cases for 'wifi', 'voice', 'password', 'landing', 'ar'
+        case 'wifi': // Added Wi-Fi inputs back
+            return (
+                <div className="space-y-4">
+                    <div className="space-y-2">
+                        <Label htmlFor="wifi-ssid">Network Name (SSID)</Label>
+                        <Input id="wifi-ssid" value={inputData.wifi_ssid || ''} onChange={(e) => handleInputChange('wifi_ssid', e.target.value)} placeholder="MyHomeNetwork" required />
+                    </div>
+                    <div className="space-y-2">
+                        <Label htmlFor="wifi-password">Password</Label>
+                        <div className="flex items-center gap-2">
+                           <Input id="wifi-password" type={wifiPasswordVisible ? 'text' : 'password'} value={inputData.wifi_password || ''} onChange={(e) => handleInputChange('wifi_password', e.target.value)} placeholder="Your password" />
+                           {/* Removed visibility toggle for simplicity, can be re-added if needed */}
+                        </div>
+                    </div>
+                    <div className="space-y-2">
+                        <Label htmlFor="wifi-encryption">Encryption</Label>
+                        <Select onValueChange={(value) => handleInputChange('wifi_encryption', value)} defaultValue={inputData.wifi_encryption || 'WPA/WPA2'}>
+                            <SelectTrigger id="wifi-encryption"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                                {wifiEncryptionTypes.map(type => <SelectItem key={type} value={type}>{type}</SelectItem>)}
+                            </SelectContent>
+                        </Select>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                       {/* Removed Checkbox import, need to re-add if checkbox is used */}
+                       {/* <Checkbox id="wifi-hidden" checked={!!inputData.wifi_hidden} onCheckedChange={(checked) => handleCheckboxChange('wifi_hidden', Boolean(checked))} /> */}
+                       <input type="checkbox" id="wifi-hidden" checked={!!inputData.wifi_hidden} onChange={(e) => handleCheckboxChange('wifi_hidden', e.target.checked)} className="h-4 w-4 rounded border-primary text-primary focus:ring-primary" />
+                        <Label htmlFor="wifi-hidden" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                            Hidden Network
+                        </Label>
+                    </div>
+                </div>
+            );
       default:
         return null;
     }
   };
 
 
-  // --- Main Render --- (unchanged structure, but removed elements related to removed features)
+  // --- Main Render --- (unchanged structure, but updated QR type options)
   return (
     <div className="w-full max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-8">
         {/* Options Panel */}
@@ -868,3 +917,4 @@ export function QrCodeGenerator() {
     </div>
   );
 }
+

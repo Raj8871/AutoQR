@@ -1,14 +1,13 @@
-
 // src/components/FeaturesSection.tsx
 import React from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-import { QrCode, Palette, Image as ImageIcon, Link as LinkIcon, Type, Settings, Download } from 'lucide-react';
+import { QrCode, Palette, Image as ImageIcon, Link as LinkIcon, Type, Settings, Download, Wifi, Phone, Mail, MessageSquare, MapPin, Calendar, User, Shapes } from 'lucide-react'; // Added Shapes, Wifi, Phone, Mail, MessageSquare, MapPin, Calendar, User
 
 const features = [
   {
-    icon: Type,
+    icon: LinkIcon, // Changed from Type to represent multiple types starting with URL
     title: 'Multiple QR Types',
-    description: 'Generate codes for URLs, text, email, phone, WhatsApp, locations, events, and vCards.',
+    description: 'Generate codes for URLs, text, Wi-Fi, email, phone, WhatsApp, SMS, locations, events, and vCards.',
   },
   {
     icon: Palette,
@@ -16,7 +15,7 @@ const features = [
     description: 'Personalize QR codes with custom foreground and background colors.',
   },
     {
-    icon: QrCode, // Using QrCode icon for dot style customization
+    icon: Shapes, // Using Shapes icon for dot style customization instead of QrCode
     title: 'Dot & Corner Styles',
     description: 'Choose from various dot and corner styles like square, rounded, or dots.',
   },
