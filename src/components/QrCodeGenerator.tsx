@@ -232,7 +232,7 @@ const generateQrDataString = (type: QrType, data: Record<string, any>): string =
 
 export function QrCodeGenerator() {
   const [qrType, setQrType] = useState<QrType>('url');
-  const [inputData, setInputData] = useState<Record<string, any>>({ url: '' }); // Initialize URL as empty
+  const [inputData, setInputData] = useState<Record<string, any>>({}); // Start with empty data
   const [options, setOptions] = useState<QRCodeStylingOptions>(defaultOptions);
   const [qrCodeInstance, setQrCodeInstance] = useState<QRCodeStyling | null>(null);
   const [fileExtension, setFileExtension] = useState<FileExtension>('png');
@@ -258,38 +258,46 @@ export function QrCodeGenerator() {
   }, [qrType, inputData]);
 
 
-  // Initialize QR Code instance on mount
+  // Initialize and manage QR Code instance
   useEffect(() => {
-    if (!qrCodeInstance && qrPreviewRef.current) {
-      // Ensure the preview div is empty before appending
-      while (qrPreviewRef.current.firstChild) {
-          qrPreviewRef.current.removeChild(qrPreviewRef.current.firstChild);
-      }
-      const instance = new QRCodeStyling({
-        ...options, // Use initial options
-        data: generateQrData(), // Generate initial data
-        width: options.width || 256,
-        height: options.height || 256,
-      });
-      instance.append(qrPreviewRef.current);
-      setQrCodeInstance(instance);
+    if (!qrPreviewRef.current) return; // Ensure the ref is available
+
+    const qrOptions = {
+      ...options,
+      data: generateQrData(),
+      width: options.width || 256,
+      height: options.height || 256,
+    };
+
+    const instance = new QRCodeStyling(qrOptions);
+    setQrCodeInstance(instance); // Store the instance
+
+    const currentRef = qrPreviewRef.current; // Capture the ref's current value
+
+    // Clear the container before appending the new QR code
+    while (currentRef.firstChild) {
+      currentRef.removeChild(currentRef.firstChild);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Run only once on mount
+    instance.append(currentRef); // Append the new QR code
 
-
-   // Update QR Code when options or data change
-   useEffect(() => {
-      if (qrCodeInstance) {
-          const data = generateQrData();
-          qrCodeInstance.update({
-              ...options,
-              data: data, // Use current data
-              width: options.width || 256,
-              height: options.height || 256,
-          });
+    // Cleanup function: remove the QR code SVG when the component unmounts or dependencies change
+    return () => {
+      try {
+        if (currentRef && currentRef.contains(instance._canvas)) {
+          // Check if the canvas is still a child before removing
+          currentRef.removeChild(instance._canvas);
+        }
+      } catch (error) {
+         console.warn("Error removing QR code canvas:", error);
+         // Attempt to clear the ref's content as a fallback
+         if(currentRef) {
+             currentRef.innerHTML = '';
+         }
       }
-   }, [options, generateQrData, qrCodeInstance]);
+      setQrCodeInstance(null); // Clear the instance from state
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [options, generateQrData]); // Re-run effect when options or data change
 
 
   // --- Input Handlers ---
@@ -398,7 +406,7 @@ export function QrCodeGenerator() {
          setOptions(prev => ({ ...prev, image: imageUrl })); // Use original URL as image
     }
  // eslint-disable-next-line react-hooks/exhaustive-deps
- }, [logoShape, logoOpacity, options.imageOptions]); // Add options.imageOptions dependency
+ }, [logoShape, logoOpacity, options.imageOptions, logoSize]); // Add logoSize
 
 
  const handleLogoUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -774,7 +782,7 @@ export function QrCodeGenerator() {
              {/* QR Type Selection */}
              <div className="space-y-2">
                 <Label htmlFor="qr-type">QR Code Type</Label>
-                <Select onValueChange={(value: QrType) => setQrType(value)} defaultValue={qrType}>
+                <Select onValueChange={(value: QrType) => { setQrType(value); setInputData({}); }} defaultValue={qrType}> {/* Reset input data on type change */}
                     <SelectTrigger id="qr-type">
                         <SelectValue placeholder="Select QR code type" />
                     </SelectTrigger>
@@ -948,9 +956,11 @@ export function QrCodeGenerator() {
              {/* QR Code Preview Area */}
             <div ref={qrPreviewRef} className="border rounded-md overflow-hidden shadow-inner flex items-center justify-center bg-white" style={{ width: options.width ?? 256, height: options.height ?? 256 }}>
                 {/* QR code gets appended here */}
-                {!qrCodeInstance && <p className="text-muted-foreground text-sm p-4">Generating QR...</p>}
+                {/* {!qrCodeInstance && <p className="text-muted-foreground text-sm p-4">Generating QR...</p>} */}
                  {/* Show placeholder if no data */}
-                {qrCodeInstance && !generateQrData() && <p className="text-muted-foreground text-center p-4">Enter data to generate QR code.</p>}
+                {/* {qrCodeInstance && !generateQrData() && <p className="text-muted-foreground text-center p-4">Enter data to generate QR code.</p>} */}
+                {(qrCodeInstance && !generateQrData()) && <p className="text-muted-foreground text-center p-4">Enter data to generate QR code.</p>}
+                {(!qrCodeInstance) && <p className="text-muted-foreground text-sm p-4">Generating QR...</p>}
             </div>
              {qrLabel && (
                 <p className="font-medium text-center mt-1">{qrLabel}</p>
@@ -980,4 +990,3 @@ export function QrCodeGenerator() {
     </div>
   );
 }
-
