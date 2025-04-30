@@ -13,37 +13,33 @@ import { Textarea } from '@/components/ui/textarea';
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Calendar } from "@/components/ui/calendar"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Checkbox } from "@/components/ui/checkbox"; // Added Checkbox
-import { Download, Image as ImageIcon, Link as LinkIcon, Phone, Mail, MessageSquare, MapPin, Calendar as CalendarIcon, User, Settings2, Palette, Shapes, Clock, Wifi, Mic, Lock, Globe, View, Eye, EyeOff } from 'lucide-react'; // Added new icons
+// Removed Checkbox as it was only used for Wi-Fi
+import { Download, Image as ImageIcon, Link as LinkIcon, Phone, Mail, MessageSquare, MapPin, Calendar as CalendarIcon, User, Settings2, Palette, Shapes, Clock } from 'lucide-react'; // Removed Wifi, Mic, Lock, Globe, View, Eye, EyeOff
 import { format } from "date-fns"
 import { cn } from '@/lib/utils';
 import { toast } from '@/hooks/use-toast';
-import { useRouter } from 'next/navigation'; // Added useRouter for navigation simulation
+import { useRouter } from 'next/navigation';
 
-// Added new QR types
-type QrType = 'url' | 'text' | 'email' | 'phone' | 'whatsapp' | 'sms' | 'location' | 'event' | 'vcard' | 'wifi' | 'voice' | 'password' | 'landing' | 'ar';
+// Define allowed QR types after removal
+type QrType = 'url' | 'text' | 'email' | 'phone' | 'whatsapp' | 'sms' | 'location' | 'event' | 'vcard';
 
-// Updated options with new icons
+// Updated options list removing Wifi, Voice, Password, Landing, AR
 const qrTypeOptions: { value: QrType; label: string; icon: React.ElementType }[] = [
   { value: 'url', label: 'Website URL', icon: LinkIcon },
   { value: 'text', label: 'Plain Text', icon: MessageSquare },
   { value: 'email', label: 'Email Address', icon: Mail },
   { value: 'phone', label: 'Phone Number', icon: Phone },
   { value: 'whatsapp', label: 'WhatsApp Message', icon: MessageSquare }, // Using MessageSquare as placeholder
-  { value: 'wifi', label: 'Wi-Fi Network', icon: Wifi },
+  { value: 'sms', label: 'SMS Message', icon: MessageSquare }, // Using MessageSquare for SMS too
   { value: 'location', label: 'Google Maps Location', icon: MapPin },
   { value: 'event', label: 'Calendar Event', icon: CalendarIcon },
   { value: 'vcard', label: 'Contact Card (vCard)', icon: User },
-  { value: 'voice', label: 'Voice Message (Simulated)', icon: Mic },
-  { value: 'password', label: 'Password Protected (Simulated)', icon: Lock },
-  { value: 'landing', label: 'Mini Landing Page (Simulated)', icon: Globe },
-  { value: 'ar', label: 'AR Link (External Viewer)', icon: View },
 ];
 
 const dotTypes: DotType[] = ['square', 'dots', 'rounded', 'classy', 'classy-rounded', 'extra-rounded'];
 const cornerSquareTypes: CornerSquareType[] = ['square', 'extra-rounded', 'dot'];
 const cornerDotTypes: CornerDotType[] = ['square', 'dot'];
-const wifiEncryptionTypes = ['WPA/WPA2', 'WEP', 'None'];
+// Removed wifiEncryptionTypes
 
 const defaultOptions: QRCodeStylingOptions = {
   width: 256,
@@ -80,7 +76,7 @@ const defaultOptions: QRCodeStylingOptions = {
   },
 };
 
-// Helper function to format vCard data
+// Helper function to format vCard data (unchanged)
 const formatVCard = (data: Record<string, string>): string => {
   let vCardString = 'BEGIN:VCARD\nVERSION:3.0\n';
   if (data.firstName || data.lastName) vCardString += `N:${data.lastName || ''};${data.firstName || ''}\n`;
@@ -96,7 +92,7 @@ const formatVCard = (data: Record<string, string>): string => {
   return vCardString;
 };
 
-// Helper function to format ICS data
+// Helper function to format ICS data (unchanged)
 const formatICS = (data: Record<string, any>): string => {
     const formatDate = (date: Date | null | undefined): string => {
       if (!date) return '';
@@ -119,30 +115,9 @@ const formatICS = (data: Record<string, any>): string => {
     return icsString;
 }
 
-// Helper function for WiFi QR data
-const formatWifi = (data: Record<string, any>): string => {
-    const encryption = data.wifi_encryption || 'WPA/WPA2';
-    const ssid = data.wifi_ssid || '';
-    const password = data.wifi_password || '';
-    const hidden = data.wifi_hidden ? 'true' : 'false';
-    // Escape special characters: \, ;, ,, ", :
-    const escape = (str: string) => str.replace(/([\\;,":])/g, '\\$1');
+// Removed formatWifi function
 
-    if (!ssid) return ''; // SSID is required
-
-    let wifiString = `WIFI:T:${escape(encryption)};S:${escape(ssid)};`;
-    if (password && encryption !== 'None') {
-        wifiString += `P:${escape(password)};`;
-    }
-    if (data.wifi_hidden) {
-        wifiString += `H:${hidden};`;
-    }
-    wifiString += ';';
-    return wifiString;
-};
-
-
-// Helper to process image for shape/opacity (using Canvas)
+// Helper to process image for shape/opacity (using Canvas) - unchanged
 const processImage = (
     imageUrl: string,
     shape: 'square' | 'circle',
@@ -210,20 +185,15 @@ export function QrCodeGenerator() {
   const [qrLabel, setQrLabel] = useState<string>('');
   const [expiryDate, setExpiryDate] = useState<Date | undefined>(undefined);
   const [expiryTime, setExpiryTime] = useState<string>("00:00"); // HH:mm format
-  const [wifiPasswordVisible, setWifiPasswordVisible] = useState(true);
-  const [qrPasswordVisible, setQrPasswordVisible] = useState(true); // For password protected QR
-  const [voiceFile, setVoiceFile] = useState<File | null>(null);
-  const [arFile, setArFile] = useState<File | null>(null);
-  const voiceAudioRef = useRef<HTMLAudioElement>(null); // For voice preview
-  const [landingPagePreview, setLandingPagePreview] = useState<string>(''); // For landing page preview HTML
+  // Removed wifiPasswordVisible, qrPasswordVisible, voiceFile, arFile, landingPagePreview state
 
   const qrPreviewRef = useRef<HTMLDivElement>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
-  const voiceInputRef = useRef<HTMLInputElement>(null);
-  const arInputRef = useRef<HTMLInputElement>(null);
+  // Removed voiceInputRef, arInputRef refs
+  // Removed voiceAudioRef
   const router = useRouter(); // Initialize router
 
-  // Generate QR Data String based on type and inputData
+  // Generate QR Data String based on type and inputData - removed Wifi, Voice, Password, Landing, AR cases
   const generateQrData = useCallback((): string => {
     switch (qrType) {
       case 'url':
@@ -237,13 +207,9 @@ export function QrCodeGenerator() {
       case 'whatsapp':
         const phoneNum = (inputData.whatsapp_phone || '').replace(/[^0-9]/g, ''); // Clean phone number
         return `https://wa.me/${phoneNum}?text=${encodeURIComponent(inputData.whatsapp_message || '')}`;
-      case 'wifi':
-        return formatWifi({
-            wifi_ssid: inputData.wifi_ssid,
-            wifi_password: inputData.wifi_password,
-            wifi_encryption: inputData.wifi_encryption,
-            wifi_hidden: inputData.wifi_hidden,
-        });
+      case 'sms':
+        const smsPhoneNum = (inputData.sms_phone || '').replace(/[^0-9]/g, '');
+        return `sms:${smsPhoneNum}?body=${encodeURIComponent(inputData.sms_message || '')}`;
       case 'location':
         return `https://www.google.com/maps/search/?api=1&query=${inputData.latitude || 0},${inputData.longitude || 0}`;
       case 'event':
@@ -266,81 +232,47 @@ export function QrCodeGenerator() {
             website: inputData.vcard_website,
             address: inputData.vcard_address,
         });
-      case 'voice':
-        // Simulate link to hosted voice message (using a placeholder)
-        // In a real app, this URL would point to the hosted audio file
-        return inputData.voice_url || 'https://linkspark.com/voice-placeholder.mp3';
-       case 'password':
-        // Simulate link to a password-protected page
-        // The actual password and content are handled by the target page
-        // Encode content and password in URL params (basic simulation, NOT secure)
-        const content = encodeURIComponent(inputData.password_content || '');
-        const pass = encodeURIComponent(inputData.password_value || '');
-        return `/protected?content=${content}&pass_check=${pass}`; // Simulated route
-      case 'landing':
-        // Simulate link to a mini landing page
-         // Encode content in URL params (basic simulation)
-        const landingData = {
-            title: inputData.landing_title || 'My Landing Page',
-            logo: inputData.landing_logo_url || '', // Need to handle logo upload/URL
-            contact: inputData.landing_contact || '',
-            social: {
-                insta: inputData.landing_insta || '',
-                twitter: inputData.landing_twitter || '',
-                fb: inputData.landing_fb || '',
-            }
-        };
-        const encodedLandingData = encodeURIComponent(JSON.stringify(landingData));
-        return `/landing?data=${encodedLandingData}`; // Simulated route
-       case 'ar':
-        // Link to an external AR viewer or platform with the model URL
-        // For simulation, use a placeholder AR link
-        return inputData.ar_url || 'https://linkspark.com/ar-viewer?model=placeholder.glb';
+      // Removed cases for 'wifi', 'voice', 'password', 'landing', 'ar'
       default:
         return '';
     }
   }, [qrType, inputData]); // Added inputData to dependencies
 
-  // Initialize QR Code instance
+  // Initialize QR Code instance (unchanged logic)
   useEffect(() => {
-    // Ensure instance is created only once or when necessary
     if (!qrCodeInstance && qrPreviewRef.current) {
         const instance = new QRCodeStyling({
             ...options,
             data: generateQrData(),
-            width: options.width || 256, // Ensure width/height are defined
+            width: options.width || 256,
             height: options.height || 256,
         });
         setQrCodeInstance(instance);
     } else if (qrCodeInstance) {
-        // Update existing instance
          qrCodeInstance.update({
             ...options,
             data: generateQrData(),
-            width: options.width || 256, // Ensure width/height are defined
+            width: options.width || 256,
             height: options.height || 256,
          });
     }
-  }, [options, generateQrData]); // Removed qrCodeInstance from deps to avoid loop
+  }, [options, generateQrData]);
 
-  // Append QR Code to the DOM - only when instance changes or ref becomes available
+  // Append QR Code to the DOM - only when instance changes or ref becomes available (unchanged logic)
   useEffect(() => {
     if (qrPreviewRef.current && qrCodeInstance) {
       qrPreviewRef.current.innerHTML = ''; // Clear previous QR code
       qrCodeInstance.append(qrPreviewRef.current);
     }
-  }, [qrCodeInstance, qrPreviewRef.current]); // Depend on the instance and the ref mount
+  }, [qrCodeInstance, qrPreviewRef.current]);
 
 
-  // --- Input Handlers ---
+  // --- Input Handlers --- (unchanged)
   const handleInputChange = (key: string, value: any) => {
     setInputData(prev => ({ ...prev, [key]: value }));
   };
 
-   const handleCheckboxChange = (key: string, checked: boolean | "indeterminate") => {
-    setInputData(prev => ({ ...prev, [key]: !!checked })); // Store as boolean
-  };
-
+  // Removed handleCheckboxChange as checkbox is no longer used
 
   const handleDateChange = (key: string, date: Date | undefined) => {
     setInputData(prev => ({ ...prev, [key]: date }));
@@ -352,7 +284,7 @@ export function QrCodeGenerator() {
   };
 
 
-  // --- Customization Handlers ---
+  // --- Customization Handlers --- (unchanged logic for remaining options)
   const handleColorChange = (target: 'dots' | 'background' | 'cornersSquare' | 'cornersDot', color: string) => {
      setOptions(prev => ({
         ...prev,
@@ -409,28 +341,25 @@ export function QrCodeGenerator() {
  }
 
 
-  // --- Logo Handling ---
+  // --- Logo Handling --- (unchanged logic)
  const applyLogoShapeAndOpacity = useCallback(async (imageUrl: string, shape: 'square' | 'circle', opacity: number) => {
     try {
-      // Use a fixed intermediate size for processing to avoid large canvases
       const processedImageUrl = await processImage(imageUrl, shape, 200, opacity);
-      setLogoPreviewUrl(processedImageUrl); // Update preview with shaped image
+      setLogoPreviewUrl(processedImageUrl);
        setOptions(prev => ({
            ...prev,
-           image: processedImageUrl, // Use processed image for QR
+           image: processedImageUrl,
            imageOptions: {
             ...prev.imageOptions,
-            // Opacity is handled during image processing now, not directly by qr-code-styling
            }
        }));
     } catch (error) {
         console.error("Error processing logo image:", error);
         toast({ variant: "destructive", title: "Logo Error", description: "Could not process the logo image." });
-        // Fallback to original image if processing fails
         setLogoPreviewUrl(imageUrl);
          setOptions(prev => ({ ...prev, image: imageUrl }));
     }
- }, [logoSize]); // Depends on logoSize (via options.imageOptions.imageSize)
+ }, [logoSize]);
 
 
  const handleLogoUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -439,8 +368,8 @@ export function QrCodeGenerator() {
       const reader = new FileReader();
       reader.onloadend = () => {
         const imageUrl = reader.result as string;
-        setOriginalLogoUrl(imageUrl); // Store original
-        applyLogoShapeAndOpacity(imageUrl, logoShape, logoOpacity / 100); // Apply current shape/opacity
+        setOriginalLogoUrl(imageUrl);
+        applyLogoShapeAndOpacity(imageUrl, logoShape, logoOpacity / 100);
       };
       reader.readAsDataURL(file);
     } else {
@@ -462,7 +391,7 @@ export function QrCodeGenerator() {
  };
 
 
- // --- Expiry Handling ---
+ // --- Expiry Handling --- (unchanged logic)
   const handleSetExpiryPreset = (duration: '1h' | '24h' | '7d' | null) => {
       let expiry: Date | undefined = undefined;
       if (duration !== null) {
@@ -478,7 +407,6 @@ export function QrCodeGenerator() {
           setExpiryTime("00:00");
       }
        setExpiryDate(expiry);
-       // Note: Actual expiry logic requires backend/serverless function
        toast({ title: "Expiry Set (UI Only)", description: "QR code expiry requires backend implementation to function." });
   };
 
@@ -486,8 +414,8 @@ export function QrCodeGenerator() {
      setExpiryDate(date);
      if (date) {
          const [hours, minutes] = expiryTime.split(':').map(Number);
-         date.setHours(hours, minutes, 0, 0); // Apply time to the selected date
-         setExpiryDate(new Date(date)); // Update state with combined date/time
+         date.setHours(hours, minutes, 0, 0);
+         setExpiryDate(new Date(date));
      }
       toast({ title: "Expiry Set (UI Only)", description: "QR code expiry requires backend implementation to function." });
  };
@@ -499,97 +427,21 @@ export function QrCodeGenerator() {
          const [hours, minutes] = timeValue.split(':').map(Number);
          const updatedDate = new Date(expiryDate);
          updatedDate.setHours(hours, minutes, 0, 0);
-         setExpiryDate(updatedDate); // Update state with new time
+         setExpiryDate(updatedDate);
           toast({ title: "Expiry Set (UI Only)", description: "QR code expiry requires backend implementation to function." });
      }
  }
 
- // --- File Handlers (Voice & AR) ---
- const handleFileChange = (type: 'voice' | 'ar', e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-        if (type === 'voice') {
-            if (file.type.startsWith('audio/')) {
-                setVoiceFile(file);
-                handleInputChange('voice_url', URL.createObjectURL(file)); // Use blob URL for preview
-                toast({ title: "Voice File Selected", description: `${file.name} ready for preview.` });
-                if (voiceAudioRef.current) {
-                    voiceAudioRef.current.load(); // Load the new source
-                }
-            } else {
-                 toast({ variant: "destructive", title: "Invalid File", description: "Please select an audio file (MP3, WAV, etc.)." });
-                 e.target.value = ''; // Reset input
-            }
-        } else if (type === 'ar') {
-             if (file.name.endsWith('.glb') || file.name.endsWith('.gltf')) {
-                setArFile(file);
-                // Simulate uploading and getting a URL
-                handleInputChange('ar_url', `https://linkspark.com/ar-viewer?model=${file.name}`);
-                toast({ title: "AR Model Selected", description: `${file.name} linked (simulated URL).` });
-            } else {
-                 toast({ variant: "destructive", title: "Invalid File", description: "Please select a GLB or GLTF file." });
-                 e.target.value = ''; // Reset input
-            }
-        }
-    }
- };
+ // --- Removed File Handlers (Voice & AR) ---
+ // Removed handleFileChange, triggerFileUpload, removeFile
 
-  const triggerFileUpload = (type: 'voice' | 'ar') => {
-    if (type === 'voice') voiceInputRef.current?.click();
-    if (type === 'ar') arInputRef.current?.click();
-  };
+ // --- Removed Landing Page Preview ---
+ // Removed useEffect for landing page preview
 
-  const removeFile = (type: 'voice' | 'ar') => {
-      if (type === 'voice') {
-          setVoiceFile(null);
-          handleInputChange('voice_url', '');
-           if (voiceAudioRef.current) voiceAudioRef.current.src = ''; // Clear audio source
-          if (voiceInputRef.current) voiceInputRef.current.value = '';
-      } else if (type === 'ar') {
-          setArFile(null);
-          handleInputChange('ar_url', '');
-          if (arInputRef.current) arInputRef.current.value = '';
-      }
-  }
-
- // --- Landing Page Preview ---
- useEffect(() => {
-     if (qrType === 'landing') {
-         const data = {
-            title: inputData.landing_title || 'My Landing Page',
-            logo: inputData.landing_logo_url || '', // Placeholder
-            contact: inputData.landing_contact || '',
-            social: {
-                insta: inputData.landing_insta || '',
-                twitter: inputData.landing_twitter || '',
-                fb: inputData.landing_fb || '',
-            }
-        };
-         // Generate simple HTML preview
-        const html = `
-            <div style="font-family: sans-serif; border: 1px solid #ccc; border-radius: 8px; padding: 20px; max-width: 300px; margin: auto; text-align: center; background: #f9f9f9;">
-                ${data.logo ? `<img src="${data.logo}" alt="Logo" style="width: 50px; height: 50px; border-radius: 50%; margin-bottom: 10px;">` : ''}
-                <h3 style="margin: 0 0 10px 0; color: #333;">${data.title}</h3>
-                ${data.contact ? `<p style="margin: 10px 0;"><a href="tel:${data.contact}" style="text-decoration: none; color: #007bff;">Call: ${data.contact}</a></p>` : ''}
-                <div style="margin-top: 15px;">
-                    ${data.social.insta ? `<a href="https://instagram.com/${data.social.insta}" target="_blank" style="margin: 0 5px; text-decoration: none;">Insta</a>` : ''}
-                    ${data.social.twitter ? `<a href="https://twitter.com/${data.social.twitter}" target="_blank" style="margin: 0 5px; text-decoration: none;">Twitter</a>` : ''}
-                    ${data.social.fb ? `<a href="https://facebook.com/${data.social.fb}" target="_blank" style="margin: 0 5px; text-decoration: none;">FB</a>` : ''}
-                </div>
-            </div>
-        `;
-        setLandingPagePreview(html);
-     } else {
-         setLandingPagePreview('');
-     }
- }, [inputData, qrType]);
-
-
- // --- Download ---
+ // --- Download --- (unchanged logic)
   const onDownloadClick = useCallback(() => {
     if (!qrCodeInstance) return;
 
-    // Temporarily add label if needed (requires drawing on canvas)
     if (qrLabel) {
          toast({ title: "Label Download (Not Implemented)", description: "Downloading with label requires advanced canvas drawing. Downloading QR only." });
     }
@@ -598,7 +450,7 @@ export function QrCodeGenerator() {
   }, [qrCodeInstance, fileExtension, qrType, qrLabel]);
 
 
-  // --- Render Dynamic Inputs ---
+  // --- Render Dynamic Inputs --- (removed cases for Wifi, Voice, Password, Landing, AR)
   const renderInputs = () => {
     switch (qrType) {
       case 'url':
@@ -652,34 +504,16 @@ export function QrCodeGenerator() {
                </div>
             </div>
            )
-        case 'wifi':
+        case 'sms':
             return (
                 <div className="space-y-4">
                     <div className="space-y-2">
-                        <Label htmlFor="wifi-ssid">Network Name (SSID)</Label>
-                        <Input id="wifi-ssid" value={inputData.wifi_ssid || ''} onChange={(e) => handleInputChange('wifi_ssid', e.target.value)} placeholder="Your Network Name" required />
+                        <Label htmlFor="qr-sms-phone">SMS Recipient Number</Label>
+                        <Input id="qr-sms-phone" type="tel" value={inputData.sms_phone || ''} onChange={(e) => handleInputChange('sms_phone', e.target.value)} placeholder="+1234567890" required />
                     </div>
-                     <div className="space-y-2">
-                        <Label htmlFor="wifi-encryption">Encryption Type</Label>
-                        <Select onValueChange={(value) => handleInputChange('wifi_encryption', value)} defaultValue={inputData.wifi_encryption || wifiEncryptionTypes[0]}>
-                            <SelectTrigger id="wifi-encryption"><SelectValue /></SelectTrigger>
-                            <SelectContent>{wifiEncryptionTypes.map(type => <SelectItem key={type} value={type}>{type}</SelectItem>)}</SelectContent>
-                        </Select>
-                     </div>
-                    {inputData.wifi_encryption !== 'None' && (
-                        <div className="space-y-2">
-                            <Label htmlFor="wifi-password">Password</Label>
-                            <div className="flex items-center gap-2">
-                                <Input id="wifi-password" type={wifiPasswordVisible ? "text" : "password"} value={inputData.wifi_password || ''} onChange={(e) => handleInputChange('wifi_password', e.target.value)} placeholder="Network Password" required={inputData.wifi_encryption !== 'None'} />
-                                <Button variant="ghost" size="icon" type="button" onClick={() => setWifiPasswordVisible(prev => !prev)} aria-label={wifiPasswordVisible ? "Hide password" : "Show password"}>
-                                    {wifiPasswordVisible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                                </Button>
-                            </div>
-                        </div>
-                    )}
-                     <div className="flex items-center space-x-2">
-                        <Checkbox id="wifi-hidden" checked={!!inputData.wifi_hidden} onCheckedChange={(checked) => handleCheckboxChange('wifi_hidden', checked)} />
-                        <Label htmlFor="wifi-hidden" className="text-sm font-normal">Hidden Network (SSID is not broadcast)</Label>
+                    <div className="space-y-2">
+                        <Label htmlFor="qr-sms-message">SMS Message (Optional)</Label>
+                        <Textarea id="qr-sms-message" value={inputData.sms_message || ''} onChange={(e) => handleInputChange('sms_message', e.target.value)} placeholder="Enter message..." rows={3} />
                     </div>
                 </div>
             );
@@ -811,136 +645,14 @@ export function QrCodeGenerator() {
                 </div>
             </div>
            );
-        case 'voice':
-            return (
-                <div className="space-y-4">
-                    <div className="space-y-2">
-                        <Label htmlFor="voice-upload">Upload Audio File (MP3, WAV)</Label>
-                         <div className="flex items-center gap-4">
-                             <Button variant="outline" onClick={() => triggerFileUpload('voice')} className="flex-grow justify-start text-left font-normal">
-                                <Mic className="mr-2 h-4 w-4" />
-                                {voiceFile ? voiceFile.name : "Select Audio File"}
-                            </Button>
-                            <Input ref={voiceInputRef} id="voice-upload" type="file" accept="audio/mpeg, audio/wav, audio/*" onChange={(e) => handleFileChange('voice', e)} className="hidden" />
-                            {voiceFile && (
-                                <Button variant="destructive" size="sm" onClick={() => removeFile('voice')}>Remove</Button>
-                            )}
-                         </div>
-                        {voiceFile && (
-                            <div className="mt-2">
-                                <Label>Preview:</Label>
-                                <audio ref={voiceAudioRef} controls className="w-full mt-1" src={inputData.voice_url || ''}>
-                                    Your browser does not support the audio element.
-                                </audio>
-                            </div>
-                        )}
-                         <p className="text-xs text-muted-foreground">File is linked using a temporary URL for preview. Real implementation requires file hosting.</p>
-                    </div>
-                </div>
-            );
-        case 'password':
-            return (
-                <div className="space-y-4">
-                    <div className="space-y-2">
-                        <Label htmlFor="password-content">Content to Protect</Label>
-                        <Textarea id="password-content" value={inputData.password_content || ''} onChange={(e) => handleInputChange('password_content', e.target.value)} placeholder="Enter the secret text or URL..." rows={4} required />
-                    </div>
-                    <div className="space-y-2">
-                        <Label htmlFor="password-value">Set Password</Label>
-                        <div className="flex items-center gap-2">
-                            <Input id="password-value" type={qrPasswordVisible ? "text" : "password"} value={inputData.password_value || ''} onChange={(e) => handleInputChange('password_value', e.target.value)} placeholder="Enter password" required />
-                             <Button variant="ghost" size="icon" type="button" onClick={() => setQrPasswordVisible(prev => !prev)} aria-label={qrPasswordVisible ? "Hide password" : "Show password"}>
-                                    {qrPasswordVisible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                                </Button>
-                        </div>
-                    </div>
-                    <p className="text-xs text-muted-foreground">This creates a QR linking to a simulated password page. Real protection requires a backend.</p>
-                    <Button variant="outline" size="sm" onClick={() => {
-                        const qrData = generateQrData();
-                        if (qrData.startsWith('/protected')) {
-                            window.open(qrData, '_blank'); // Open the simulated page
-                        } else {
-                             toast({ variant: "destructive", title: "Error", description: "Could not generate simulation link." });
-                        }
-                    }}>Preview Protected Page (Simulated)</Button>
-                </div>
-            );
-         case 'landing':
-            return (
-                 <div className="space-y-4">
-                    <div className="space-y-2">
-                        <Label htmlFor="landing-title">Page Title</Label>
-                        <Input id="landing-title" value={inputData.landing_title || ''} onChange={(e) => handleInputChange('landing_title', e.target.value)} placeholder="My Awesome Page" required />
-                    </div>
-                     {/* Basic inputs for simulation. Real app would need logo upload etc. */}
-                     <div className="space-y-2">
-                        <Label htmlFor="landing-contact">Contact Button (Phone/Email)</Label>
-                        <Input id="landing-contact" value={inputData.landing_contact || ''} onChange={(e) => handleInputChange('landing_contact', e.target.value)} placeholder="e.g., +15551234 or mailto:me@example.com" />
-                    </div>
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                         <div className="space-y-2">
-                            <Label htmlFor="landing-insta">Instagram Handle</Label>
-                            <Input id="landing-insta" value={inputData.landing_insta || ''} onChange={(e) => handleInputChange('landing_insta', e.target.value)} placeholder="username" />
-                        </div>
-                         <div className="space-y-2">
-                            <Label htmlFor="landing-twitter">Twitter Handle</Label>
-                            <Input id="landing-twitter" value={inputData.landing_twitter || ''} onChange={(e) => handleInputChange('landing_twitter', e.target.value)} placeholder="username" />
-                        </div>
-                         <div className="space-y-2">
-                            <Label htmlFor="landing-fb">Facebook Profile ID/Username</Label>
-                            <Input id="landing-fb" value={inputData.landing_fb || ''} onChange={(e) => handleInputChange('landing_fb', e.target.value)} placeholder="profile.id" />
-                        </div>
-                    </div>
-                     <p className="text-xs text-muted-foreground">Creates a QR linking to a simulated landing page. Real implementation requires page hosting.</p>
-                     <div className="border p-4 rounded-md bg-muted/30">
-                         <Label>Live Preview (Simulated):</Label>
-                         <div className="mt-2" dangerouslySetInnerHTML={{ __html: landingPagePreview }}></div>
-                     </div>
-                     <Button variant="outline" size="sm" onClick={() => {
-                        const qrData = generateQrData();
-                        if (qrData.startsWith('/landing')) {
-                            window.open(qrData, '_blank'); // Open the simulated page
-                        } else {
-                             toast({ variant: "destructive", title: "Error", description: "Could not generate simulation link." });
-                        }
-                    }}>Preview Landing Page (Simulated)</Button>
-                 </div>
-            );
-        case 'ar':
-            return (
-                 <div className="space-y-4">
-                     <div className="space-y-2">
-                        <Label htmlFor="ar-upload">Upload 3D Model (GLB, GLTF)</Label>
-                         <div className="flex items-center gap-4">
-                             <Button variant="outline" onClick={() => triggerFileUpload('ar')} className="flex-grow justify-start text-left font-normal">
-                                <View className="mr-2 h-4 w-4" />
-                                {arFile ? arFile.name : "Select 3D Model"}
-                            </Button>
-                            <Input ref={arInputRef} id="ar-upload" type="file" accept=".glb,.gltf" onChange={(e) => handleFileChange('ar', e)} className="hidden" />
-                            {arFile && (
-                                <Button variant="destructive" size="sm" onClick={() => removeFile('ar')}>Remove</Button>
-                            )}
-                         </div>
-                         {arFile && (
-                             <p className="text-xs text-muted-foreground">Model selected: {arFile.name}. QR links to a simulated AR viewer URL.</p>
-                         )}
-                         {!arFile && (
-                              <div className="space-y-2 mt-4">
-                                 <Label htmlFor="ar-url">Or Enter AR Link URL</Label>
-                                 <Input id="ar-url" type="url" value={inputData.ar_url || ''} onChange={(e) => handleInputChange('ar_url', e.target.value)} placeholder="https://your-ar-link.com/model.glb" />
-                             </div>
-                         )}
-                         <p className="text-sm text-muted-foreground">Scan with an AR-compatible browser/app (like Google app on Android, Safari on iOS with WebXR support).</p>
-                    </div>
-                </div>
-            );
+        // Removed cases for 'wifi', 'voice', 'password', 'landing', 'ar'
       default:
         return null;
     }
   };
 
 
-  // --- Main Render ---
+  // --- Main Render --- (unchanged structure, but removed elements related to removed features)
   return (
     <div className="w-full max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-8">
         {/* Options Panel */}
@@ -949,7 +661,7 @@ export function QrCodeGenerator() {
             <CardTitle>QR Code Options</CardTitle>
           </CardHeader>
           <CardContent className="space-y-6">
-             {/* QR Type Selection */}
+             {/* QR Type Selection (updated options) */}
              <div className="space-y-2">
                 <Label htmlFor="qr-type">QR Code Type</Label>
                 <Select onValueChange={(value: QrType) => setQrType(value)} defaultValue={qrType}>
@@ -969,12 +681,12 @@ export function QrCodeGenerator() {
                 </Select>
              </div>
 
-             {/* Dynamic Inputs */}
+             {/* Dynamic Inputs (rendered based on available types) */}
              <div className="border p-4 rounded-md bg-muted/20">
                 {renderInputs()}
              </div>
 
-             {/* Customization Tabs */}
+             {/* Customization Tabs (unchanged structure) */}
               <Tabs defaultValue="styling" className="w-full">
                   <TabsList className="grid w-full grid-cols-3">
                     <TabsTrigger value="styling"><Palette className="inline-block mr-1 h-4 w-4" /> Styling</TabsTrigger>
@@ -982,7 +694,7 @@ export function QrCodeGenerator() {
                     <TabsTrigger value="expiry"><Clock className="inline-block mr-1 h-4 w-4" /> Expiry</TabsTrigger>
                   </TabsList>
 
-                  {/* Styling Tab */}
+                  {/* Styling Tab (unchanged) */}
                   <TabsContent value="styling" className="pt-4 space-y-6">
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                            <div className="space-y-2">
@@ -1035,7 +747,7 @@ export function QrCodeGenerator() {
                        </div>
                   </TabsContent>
 
-                  {/* Logo Tab */}
+                  {/* Logo Tab (unchanged) */}
                   <TabsContent value="logo" className="pt-4 space-y-6">
                      <div className="space-y-2">
                          <Label htmlFor="logo-upload">Center Logo/Image</Label>
@@ -1061,7 +773,6 @@ export function QrCodeGenerator() {
                         <>
                             <div className="space-y-3">
                                 <Label htmlFor="logo-size">Logo Size ({logoSize}%)</Label>
-                                {/* Adjusted max size to 40% based on qr-code-styling recommendation */}
                                 <Slider id="logo-size" defaultValue={[logoSize]} min={10} max={40} step={1} onValueChange={handleLogoSizeChange} />
                             </div>
                              <div className="space-y-3">
@@ -1082,7 +793,7 @@ export function QrCodeGenerator() {
                     )}
                   </TabsContent>
 
-                    {/* Expiry Tab */}
+                    {/* Expiry Tab (unchanged) */}
                    <TabsContent value="expiry" className="pt-4 space-y-6">
                         <p className="text-sm text-muted-foreground">Set an optional expiration date/time. (Note: Requires backend integration to be functional).</p>
                         <div className="flex flex-wrap gap-2">
@@ -1118,7 +829,7 @@ export function QrCodeGenerator() {
           </CardContent>
         </Card>
 
-        {/* QR Preview Panel */}
+        {/* QR Preview Panel (unchanged) */}
         <Card className="md:col-span-1 order-1 md:order-2 sticky top-20 self-start"> {/* Sticky preview */}
           <CardHeader>
             <CardTitle>QR Code Preview</CardTitle>
@@ -1157,4 +868,3 @@ export function QrCodeGenerator() {
     </div>
   );
 }
-
