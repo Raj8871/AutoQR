@@ -18,6 +18,7 @@ import { format } from "date-fns"
 import { cn } from '@/lib/utils';
 import { toast } from '@/hooks/use-toast';
 import { useRouter } from 'next/navigation';
+import { Checkbox } from '@/components/ui/checkbox'; // Import Checkbox
 
 // Define allowed QR types
 type QrType = 'url' | 'text' | 'email' | 'phone' | 'whatsapp' | 'sms' | 'location' | 'event' | 'vcard' | 'wifi';
@@ -46,7 +47,7 @@ const defaultOptions: QRCodeStylingOptions = {
   width: 256,
   height: 256,
   type: 'svg',
-  data: '', // Default data is now empty
+  data: 'https://linkspark.com', // Restore default data
   image: '',
   dotsOptions: {
     color: '#008080', // Teal accent color
@@ -185,77 +186,53 @@ const processImage = (
 };
 
 
-// Helper function to generate a simple redirect URL structure (conceptual)
-// In a real app, this would involve a backend service.
-const generateRedirectUrl = (type: QrType, data: Record<string, any>, expiry?: Date): string => {
-    // Use current origin if available, otherwise default (client-side only)
-    const baseAppUrl = typeof window !== 'undefined' ? window.location.origin : '';
-    let targetUrl = '';
+// Helper function to generate the final data string for the QR code
+const generateQrDataString = (type: QrType, data: Record<string, any>): string => {
+    let targetData = '';
 
-    // Construct the target URL based on the QR type
+    // Construct the target data based on the QR type
      switch (type) {
-      case 'url': targetUrl = data.url || ''; break;
-      case 'text': targetUrl = `data:text/plain;charset=utf-8,${encodeURIComponent(data.text || '')}`; break; // Example for text
-      case 'email': targetUrl = `mailto:${data.email || ''}?subject=${encodeURIComponent(data.subject || '')}&body=${encodeURIComponent(data.body || '')}`; break;
-      case 'phone': targetUrl = `tel:${data.phone || ''}`; break;
+      case 'url': targetData = data.url || ''; break;
+      case 'text': targetData = data.text || ''; break;
+      case 'email': targetData = `mailto:${data.email || ''}?subject=${encodeURIComponent(data.subject || '')}&body=${encodeURIComponent(data.body || '')}`; break;
+      case 'phone': targetData = `tel:${data.phone || ''}`; break;
       case 'whatsapp':
         const phoneNum = (data.whatsapp_phone || '').replace(/[^0-9]/g, '');
-        targetUrl = `https://wa.me/${phoneNum}?text=${encodeURIComponent(data.whatsapp_message || '')}`; break;
+        targetData = `https://wa.me/${phoneNum}?text=${encodeURIComponent(data.whatsapp_message || '')}`; break;
       case 'sms':
         const smsPhoneNum = (data.sms_phone || '').replace(/[^0-9]/g, '');
-        targetUrl = `sms:${smsPhoneNum}?body=${encodeURIComponent(data.sms_message || '')}`; break;
-      case 'location': targetUrl = `https://www.google.com/maps/search/?api=1&query=${data.latitude || 0},${data.longitude || 0}`; break;
+        targetData = `sms:${smsPhoneNum}?body=${encodeURIComponent(data.sms_message || '')}`; break;
+      case 'location': targetData = `https://www.google.com/maps/search/?api=1&query=${data.latitude || 0},${data.longitude || 0}`; break;
       case 'event':
-          // Note: Direct embedding of ICS might not be universally supported via URL.
-          // This generates the ICS data, but linking might need a service.
-          targetUrl = `data:text/calendar;charset=utf8,${encodeURIComponent(formatICS({
+          targetData = formatICS({
               summary: data.event_summary, location: data.event_location, description: data.event_description,
               startDate: data.event_start, endDate: data.event_end
-          }))}`;
+          });
           break;
       case 'vcard':
-          // Similar to ICS, embedding might be complex. A service is better.
-           targetUrl = `data:text/vcard;charset=utf8,${encodeURIComponent(formatVCard({
+           targetData = formatVCard({
               firstName: data.vcard_firstName, lastName: data.vcard_lastName, organization: data.vcard_organization,
               title: data.vcard_title, phone: data.vcard_phone, mobile: data.vcard_mobile,
               email: data.vcard_email, website: data.vcard_website, address: data.vcard_address
-          }))}`;
+          });
            break;
       case 'wifi':
-           targetUrl = formatWifi({
+           targetData = formatWifi({
               wifi_ssid: data.wifi_ssid, wifi_password: data.wifi_password,
               wifi_encryption: data.wifi_encryption || 'WPA/WPA2', wifi_hidden: data.wifi_hidden || false,
           });
            break;
 
-      default: targetUrl = '';
+      default: targetData = '';
     }
 
-    // If no expiry or no baseAppUrl (server-side rendering context), return the direct target URL
-    if (!expiry || !baseAppUrl) {
-        return targetUrl;
-    }
-
-    // Conceptual: Create a URL that points to *our* backend service
-    // The backend would handle the expiry check and redirect
-    // Example: https://YOUR_APP_DOMAIN/redirect?id=UNIQUE_ID
-    // For this frontend-only demo, we'll create a structured URL with expiry info embedded.
-    // WARNING: This is easily bypassable as expiry is in the URL itself. Not secure.
-    const expiryTimestamp = expiry.toISOString();
-    const params = new URLSearchParams();
-    params.set('target', btoa(targetUrl)); // Base64 encode target URL
-    params.set('expires', expiryTimestamp);
-
-    // This URL points to a *potential* API route or page on your Next.js app
-    // that would handle the logic.
-    return `${baseAppUrl}/redirect?${params.toString()}`;
+    return targetData;
 };
-
 
 
 export function QrCodeGenerator() {
   const [qrType, setQrType] = useState<QrType>('url');
-  const [inputData, setInputData] = useState<Record<string, any>>({ url: '' }); // Store data for each type - URL is now empty by default
+  const [inputData, setInputData] = useState<Record<string, any>>({ url: 'https://linkspark.com' }); // Store data for each type - restore default URL
   const [options, setOptions] = useState<QRCodeStylingOptions>(defaultOptions);
   const [qrCodeInstance, setQrCodeInstance] = useState<QRCodeStyling | null>(null);
   const [fileExtension, setFileExtension] = useState<FileExtension>('png');
@@ -274,34 +251,45 @@ export function QrCodeGenerator() {
   const logoInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter(); // Initialize router
 
-  // Generate QR Data String based on type, inputData, and expiryDate
+  // Generate QR Data String based on type and inputData
   const generateQrData = useCallback((): string => {
-      // Use the helper function to generate the potentially redirecting URL
-      return generateRedirectUrl(qrType, inputData, expiryDate);
-  }, [qrType, inputData, expiryDate]); // expiryDate is now a dependency
+      // Use the helper function to generate the data string
+      return generateQrDataString(qrType, inputData);
+  }, [qrType, inputData]); // Removed expiryDate dependency
 
 
-  // Initialize or Update QR Code instance
+  // Initialize QR Code instance on mount
   useEffect(() => {
-    const data = generateQrData();
     if (!qrCodeInstance && qrPreviewRef.current) {
       const instance = new QRCodeStyling({
-        ...options,
-        data: data,
+        ...options, // Use initial options
+        data: generateQrData(), // Generate initial data
         width: options.width || 256,
         height: options.height || 256,
       });
-      instance.append(qrPreviewRef.current); // Append directly on creation
+      instance.append(qrPreviewRef.current);
       setQrCodeInstance(instance);
-    } else if (qrCodeInstance) {
-      qrCodeInstance.update({
-        ...options,
-        data: data,
-        width: options.width || 256,
-        height: options.height || 256,
-      });
     }
-  }, [options, generateQrData, qrCodeInstance]); // Added qrCodeInstance dependency
+    // Cleanup on unmount
+    return () => {
+       // No need to manually remove child if append is used correctly
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Run only once on mount
+
+
+   // Update QR Code when options or data change
+   useEffect(() => {
+      if (qrCodeInstance) {
+          const data = generateQrData();
+          qrCodeInstance.update({
+              ...options,
+              data: data, // Use current data
+              width: options.width || 256,
+              height: options.height || 256,
+          });
+      }
+   }, [options, generateQrData, qrCodeInstance]);
 
 
   // --- Input Handlers ---
@@ -442,7 +430,7 @@ export function QrCodeGenerator() {
  };
 
 
- // --- Expiry Handling ---
+ // --- Expiry Handling (Simplified - no backend logic) ---
  const handleSetExpiryPreset = (duration: '1h' | '24h' | '7d' | null) => {
       let expiry: Date | undefined = undefined;
       if (duration !== null) {
@@ -455,13 +443,13 @@ export function QrCodeGenerator() {
           }
           // Set time state based on the calculated expiry
           setExpiryTime(format(expiry, "HH:mm"));
-           toast({ title: "Expiry Set", description: `QR code will expire ${duration === '1h' ? 'in 1 hour' : duration === '24h' ? 'in 24 hours' : 'in 7 days'}. Note: Expiry requires a backend service.` });
+           toast({ title: "Expiry Reminder", description: `QR expiry set for ${format(expiry, "PPP 'at' HH:mm")}. Note: Actual expiry requires backend implementation.` });
       } else {
           // Reset time state when removing expiry
           setExpiryTime("00:00");
            toast({ title: "Expiry Removed", description: "QR code will not expire." });
       }
-       // Update the main expiryDate state
+       // Update the main expiryDate state (visual indicator only)
        setExpiryDate(expiry);
  };
 
@@ -482,7 +470,7 @@ export function QrCodeGenerator() {
              setExpiryTime("00:00"); // Reset time input state
          } else {
              setExpiryDate(combinedDate); // Update state only if valid
-             toast({ title: "Expiry Set", description: `QR code will expire on ${format(combinedDate, "PPP 'at' HH:mm")}. Note: Expiry requires a backend service.` });
+              toast({ title: "Expiry Reminder", description: `QR expiry set for ${format(combinedDate, "PPP 'at' HH:mm")}. Note: Actual expiry requires backend implementation.` });
          }
      } else {
          // Clear expiry
@@ -510,7 +498,7 @@ export function QrCodeGenerator() {
              setExpiryTime(format(expiryDate, "HH:mm")); // Revert to previous valid time
          } else {
              setExpiryDate(updatedDate); // Update the full expiry date state
-             toast({ title: "Expiry Time Updated", description: `QR code will expire on ${format(updatedDate, "PPP 'at' HH:mm")}. Note: Expiry requires a backend service.` });
+             toast({ title: "Expiry Time Updated", description: `QR code will expire on ${format(updatedDate, "PPP 'at' HH:mm")}. Note: Actual expiry requires backend implementation.`, duration: 5000 });
          }
      }
      // If no date is set, just updating the time state is fine, it will be applied when a date is picked.
@@ -528,7 +516,7 @@ export function QrCodeGenerator() {
 
     // Add a reminder that expiry requires a backend
     if (expiryDate) {
-        toast({ title: "Downloading QR", description: "Note: Expiry functionality requires a backend service for redirection.", duration: 5000 });
+        toast({ title: "Downloading QR", description: "Note: Expiry functionality is a visual reminder and requires a backend service for redirection.", duration: 5000 });
     }
 
     if (qrLabel) {
@@ -760,8 +748,7 @@ export function QrCodeGenerator() {
                         </Select>
                     </div>
                     <div className="flex items-center space-x-2">
-                       {/* Assuming Checkbox is imported if needed, using native input for now */}
-                       <input type="checkbox" id="wifi-hidden" checked={!!inputData.wifi_hidden} onChange={(e) => handleCheckboxChange('wifi_hidden', e.target.checked)} className="h-4 w-4 rounded border-primary text-primary focus:ring-primary" />
+                       <Checkbox id="wifi-hidden" checked={!!inputData.wifi_hidden} onCheckedChange={(checked) => handleCheckboxChange('wifi_hidden', Boolean(checked))} />
                         <Label htmlFor="wifi-hidden" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
                             Hidden Network
                         </Label>
@@ -918,7 +905,7 @@ export function QrCodeGenerator() {
 
                     {/* Expiry Tab */}
                    <TabsContent value="expiry" className="pt-4 space-y-6">
-                        <p className="text-sm text-muted-foreground">Set an optional expiration date/time. <strong className='text-foreground/80'>(Note: True expiry requires a backend redirect service.)</strong></p>
+                        <p className="text-sm text-muted-foreground">Set an optional expiration date/time. <strong className='text-foreground/80'>(Note: This is a visual reminder only. Actual expiry requires a backend redirect service.)</strong></p>
                         <div className="flex flex-wrap gap-2">
                             <Button variant={!expiryDate ? "secondary" : "outline"} size="sm" onClick={() => handleSetExpiryPreset(null)}>No Expiry</Button>
                             <Button variant={expiryDate && Math.abs(new Date().getTime() + 1*60*60*1000 - expiryDate.getTime()) < 1000 ? "secondary" : "outline"} size="sm" onClick={() => handleSetExpiryPreset('1h')}>1 Hour</Button>
