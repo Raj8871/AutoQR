@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Lock } from 'lucide-react';
+import { Label } from '@/components/ui/label'; // Import the Label component
 
 function ProtectedContent() {
     const searchParams = useSearchParams();
