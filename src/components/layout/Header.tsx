@@ -1,7 +1,7 @@
 'use client'; // Add 'use client' directive for interactivity
 
 import Link from 'next/link';
-import { Sparkles } from 'lucide-react'; // Using Sparkles as a placeholder logo icon
+import { Sparkles, QrCode } from 'lucide-react'; // Using Sparkles as a placeholder logo icon, added QrCode
 import { cn } from '@/lib/utils';
 import React from 'react'; // Import React
 
@@ -15,6 +15,8 @@ export function Header() {
       element.scrollIntoView({ behavior: 'smooth' });
     } else {
         console.warn(`Element with ID "${id}" not found for scrolling.`);
+        // If on a different page, navigate first, then try scrolling (more complex)
+        // For now, we assume links are for the current page.
     }
   };
 
@@ -28,14 +30,23 @@ export function Header() {
           <Sparkles className="h-6 w-6 text-primary" />
           <span className="font-bold sm:inline-block">LinkSpark</span>
         </Link>
-        <nav className="flex items-center gap-6 text-sm">
+        <nav className="flex items-center gap-4 md:gap-6 text-sm">
           <Link
             href="#home"
             onClick={scrollToSection('home')} // onClick is now allowed
             className="transition-colors hover:text-foreground/80 text-foreground/60"
-            aria-label="Scroll to Home section" // Accessibility improvement
+            aria-label="Scroll to Top section" // Accessibility improvement
           >
             Home
+          </Link>
+           <Link
+            href="#qr-generator-section"
+            onClick={scrollToSection('qr-generator-section')}
+            className="transition-colors hover:text-foreground/80 text-foreground/60 flex items-center gap-1"
+             aria-label="Scroll to QR Generator section"
+          >
+            <QrCode className="h-4 w-4 hidden sm:inline-block" /> {/* Show icon on larger screens */}
+            Generator
           </Link>
            {/* Keep About/Contact links but ensure sections exist or hide them */}
           {/* Example of how About/Contact would work if sections existed */}

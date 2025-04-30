@@ -1,23 +1,31 @@
 
 import { Header } from '@/components/layout/Header';
 import { Footer } from '@/components/layout/Footer';
-import { CtaButton } from '@/components/CtaButton';
 import { QrCodeGenerator } from '@/components/QrCodeGenerator';
 import { Separator } from '@/components/ui/separator';
+import { HeroSection } from '@/components/HeroSection'; // Import the new client component
 
+// This is now a Server Component again, as interactivity is moved to HeroSection
 export default function Home() {
-  // The target URL for the main CTA can still be configured if needed elsewhere
-  // const targetUrl = process.env.NEXT_PUBLIC_TARGET_URL || 'https://firebase.google.com';
 
   return (
     <>
       <Header />
       <main
         id="home" // ID for navigation link
-        className="container flex flex-1 flex-col items-center justify-center py-8 md:py-12"
+        className="container flex flex-1 flex-col items-center justify-start py-8 md:py-12 animate-fade-in" // Changed justify-center to justify-start
       >
-        {/* Enhanced QR Code Generator Takes Center Stage */}
-        <QrCodeGenerator />
+        {/* Use the client component for the hero section */}
+        <HeroSection />
+
+        <Separator className="my-12" />
+
+        {/* QR Code Generator Section */}
+        <section id="qr-generator-section" className="w-full">
+             <h2 className="text-3xl font-semibold text-center mb-8">Your QR Code Generator</h2>
+             <QrCodeGenerator />
+        </section>
+
 
         {/* Optional: Keep a simple CTA if desired, or remove */}
         {/*
