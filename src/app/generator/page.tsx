@@ -12,7 +12,8 @@ export default function GeneratorPage() {
       >
         {/* QR Code Generator Section */}
         <section id="qr-generator-section" className="w-full">
-             <h2 className="text-3xl font-semibold text-center mb-8">Your QR Code Generator</h2>
+             {/* Title moved inside the QrCodeGenerator component for better context */}
+             {/* <h2 className="text-3xl font-semibold text-center mb-8">Create Your QR Code</h2> */}
              <QrCodeGenerator />
         </section>
       </main>
