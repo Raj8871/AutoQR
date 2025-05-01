@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
@@ -13,13 +12,16 @@ import { Textarea } from '@/components/ui/textarea';
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Download, Image as ImageIcon, Link as LinkIcon, Phone, Mail, MessageSquare, MapPin, Calendar as CalendarIcon, User, Settings2, Palette, Clock, Wifi, Upload, Check, Trash2, Info, Eye, EyeOff, QrCode as QrCodeIcon } from 'lucide-react'; // Added QrCodeIcon, removed Shapes
+import { Download, Image as ImageIcon, Link as LinkIcon, Phone, Mail, MessageSquare, MapPin, Calendar as CalendarIcon, User, Settings2, Palette, Clock, Wifi, Upload, Check, Trash2, Info, Eye, EyeOff, QrCode as QrCodeIcon, History as HistoryIcon, RefreshCcw, Star, Sparkles, Shapes } from 'lucide-react'; // Added HistoryIcon, RefreshCcw, Star, Sparkles, Shapes
 import { format } from "date-fns";
 import { cn } from '@/lib/utils';
 import { toast } from '@/hooks/use-toast';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'; // Import Tooltip components
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { ScrollArea } from '@/components/ui/scroll-area'; // Import ScrollArea
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog'; // Import AlertDialog
 
+// --- Types ---
 
 // Define allowed QR types
 type QrType = 'url' | 'text' | 'email' | 'phone' | 'whatsapp' | 'sms' | 'location' | 'event' | 'vcard' | 'wifi';
@@ -38,24 +40,39 @@ const qrTypeOptions: { value: QrType; label: string; icon: React.ElementType; de
   { value: 'wifi', label: 'Wi-Fi Network', icon: Wifi, description: 'Connect to a Wi-Fi network automatically.' },
 ];
 
+// Define style types
 const dotTypes: DotType[] = ['square', 'dots', 'rounded', 'classy', 'classy-rounded', 'extra-rounded'];
 const cornerSquareTypes: CornerSquareType[] = ['square', 'extra-rounded', 'dot'];
 const cornerDotTypes: CornerDotType[] = ['square', 'dot'];
 const wifiEncryptionTypes = ['WPA/WPA2', 'WEP', 'None'];
 
+// Define History Item structure
+interface HistoryItem {
+  id: string;
+  timestamp: number;
+  qrType: QrType;
+  inputData: Record<string, any>;
+  options: Partial<QRCodeStylingOptions>; // Store only relevant customizable options
+  label: string;
+  previewSvgDataUrl: string | null; // Store the preview URL for quick display
+}
 
+const LOCAL_STORAGE_KEY = 'qrCodeHistory';
+const MAX_HISTORY_ITEMS = 15;
+
+// --- Default Options ---
 const defaultOptions: QRCodeStylingOptions = {
   width: 256,
   height: 256,
-  type: 'svg', // Default to SVG for better scalability
-  data: '', // Start with empty data
+  type: 'svg',
+  data: '',
   image: '',
   dotsOptions: {
-    color: '#008080', // Teal accent color from theme
+    color: '#008080', // Teal accent
     type: 'rounded',
   },
   backgroundOptions: {
-    color: '#FFFFFF', // Default to white background for better contrast
+    color: '#FFFFFF',
   },
   imageOptions: {
     crossOrigin: 'anonymous',
@@ -78,6 +95,34 @@ const defaultOptions: QRCodeStylingOptions = {
 
 // --- Helper Functions ---
 
+// Get item from local storage
+const getLocalStorageItem = <T>(key: string, defaultValue: T): T => {
+  if (typeof window === 'undefined') {
+    return defaultValue;
+  }
+  try {
+    const item = window.localStorage.getItem(key);
+    return item ? JSON.parse(item) : defaultValue;
+  } catch (error) {
+    console.error(`Error reading localStorage key “${key}”:`, error);
+    return defaultValue;
+  }
+};
+
+// Set item in local storage
+const setLocalStorageItem = <T>(key: string, value: T): void => {
+  if (typeof window === 'undefined') {
+    return;
+  }
+  try {
+    window.localStorage.setItem(key, JSON.stringify(value));
+  } catch (error) {
+    console.error(`Error setting localStorage key “${key}”:`, error);
+     toast({ variant: "destructive", title: "Storage Error", description: "Could not save history. Local storage might be full or disabled." });
+  }
+};
+
+
 // Format vCard data
 const formatVCard = (data: Record<string, string>): string => {
   let vCardString = 'BEGIN:VCARD\nVERSION:3.0\n';
@@ -91,7 +136,6 @@ const formatVCard = (data: Record<string, string>): string => {
   if (data.website) vCardString += `URL:${data.website}\n`;
   if (data.address) vCardString += `ADR;TYPE=WORK:;;${data.address}\n`; // Basic address format
   vCardString += 'END:VCARD';
-  // vCard requires at least first or last name to be somewhat valid for many readers
   if (!data.firstName && !data.lastName) return '';
   return vCardString;
 };
@@ -100,56 +144,44 @@ const formatVCard = (data: Record<string, string>): string => {
 const formatICS = (data: Record<string, any>): string => {
     const formatDate = (date: Date | null | undefined): string => {
       if (!date) return '';
-      // Format date as YYYYMMDDTHHmmssZ (UTC time)
       return date.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
     };
-
-    // Event requires a summary and start date
     if (!data.summary || !data.startDate) return '';
-
     let icsString = 'BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//LinkSpark//QR Event Generator//EN\nBEGIN:VEVENT\n';
     icsString += `SUMMARY:${data.summary}\n`;
     if (data.location) icsString += `LOCATION:${data.location}\n`;
-    if (data.description) icsString += `DESCRIPTION:${data.description.replace(/\n/g, '\\n')}\n`; // Escape newlines
+    if (data.description) icsString += `DESCRIPTION:${data.description.replace(/\n/g, '\\n')}\n`;
     icsString += `DTSTART:${formatDate(data.startDate)}\n`;
     if (data.endDate) {
       icsString += `DTEND:${formatDate(data.endDate)}\n`;
-    } else { // Default to 1 hour duration if no end date
+    } else {
         const endDate = new Date(data.startDate.getTime() + 60 * 60 * 1000);
         icsString += `DTEND:${formatDate(endDate)}\n`;
     }
-    icsString += 'UID:' + Date.now() + '@linkspark.com\n'; // Add a unique ID for better compatibility
+    icsString += 'UID:' + Date.now() + '@linkspark.com\n';
     icsString += 'END:VEVENT\nEND:VCALENDAR';
     return icsString;
 }
 
 // Format Wi-Fi data
 const formatWifi = (data: Record<string, any>): string => {
-    const escapeValue = (value: string = '') => {
-        // Escape special characters: \, ;, ,, ", :
-        return value.replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/"/g, '\\"').replace(/:/g, '\\:');
-    };
+    const escapeValue = (value: string = '') => value.replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/"/g, '\\"').replace(/:/g, '\\:');
     const ssid = escapeValue(data.wifi_ssid);
     const password = escapeValue(data.wifi_password);
-    const encryption = data.wifi_encryption === 'None' ? 'nopass' : (data.wifi_encryption || 'WPA'); // Default to WPA if undefined
+    const encryption = data.wifi_encryption === 'None' ? 'nopass' : (data.wifi_encryption || 'WPA');
     const hidden = data.wifi_hidden ? 'true' : 'false';
-
-    // Ensure required fields have values
-    if (!ssid) return ''; // SSID is mandatory
-
-    // Password is required if encryption is not 'None'
+    if (!ssid) return '';
     if (encryption !== 'nopass' && !password) return '';
-
     return `WIFI:T:${encryption};S:${ssid};${encryption !== 'nopass' ? `P:${password};` : ''}H:${hidden};;`;
 };
 
 
-// Process image for shape/opacity (using Canvas)
+// Process image for shape/opacity
 const processImage = (
     imageUrl: string,
     shape: 'square' | 'circle',
-    size: number, // Target size for the canvas
-    opacity: number = 1 // Opacity (0 to 1)
+    size: number,
+    opacity: number = 1
 ): Promise<string> => {
     return new Promise((resolve, reject) => {
         const img = new Image();
@@ -159,42 +191,21 @@ const processImage = (
             canvas.width = size;
             canvas.height = size;
             const ctx = canvas.getContext('2d');
-            if (!ctx) {
-                reject('Could not get canvas context');
-                return;
-            }
-
-            ctx.globalAlpha = opacity; // Apply opacity
-
+            if (!ctx) return reject('Could not get canvas context');
+            ctx.globalAlpha = opacity;
             if (shape === 'circle') {
-                ctx.save(); // Save context state
+                ctx.save();
                 ctx.beginPath();
                 ctx.arc(size / 2, size / 2, size / 2, 0, Math.PI * 2, true);
                 ctx.closePath();
                 ctx.clip();
             }
-
-            // Draw the image centered and covering the canvas
             const aspectRatio = img.width / img.height;
-            let drawWidth = size;
-            let drawHeight = size;
-            let offsetX = 0;
-            let offsetY = 0;
-
-            if (aspectRatio > 1) { // Wider than tall
-                drawHeight = size / aspectRatio;
-                offsetY = (size - drawHeight) / 2;
-            } else { // Taller than wide or square
-                drawWidth = size * aspectRatio;
-                offsetX = (size - drawWidth) / 2;
-            }
-
+            let drawWidth = size, drawHeight = size, offsetX = 0, offsetY = 0;
+            if (aspectRatio > 1) { drawHeight = size / aspectRatio; offsetY = (size - drawHeight) / 2; }
+            else { drawWidth = size * aspectRatio; offsetX = (size - drawWidth) / 2; }
             ctx.drawImage(img, offsetX, offsetY, drawWidth, drawHeight);
-
-            if (shape === 'circle') {
-                ctx.restore(); // Restore context state (removes clipping path)
-            }
-
+            if (shape === 'circle') ctx.restore();
             resolve(canvas.toDataURL('image/png'));
         };
         img.onerror = (error) => reject(`Image loading error: ${error}`);
@@ -206,147 +217,231 @@ const processImage = (
 // Generate the final data string for the QR code
 const generateQrDataString = (type: QrType, data: Record<string, any>): string => {
     let targetData = '';
-
     try {
          switch (type) {
-          case 'url': targetData = data.url?.trim() || ''; break; // Trim whitespace
-          case 'text': targetData = data.text?.trim() || ''; break; // Trim whitespace
+          case 'url': targetData = data.url?.trim() || ''; break;
+          case 'text': targetData = data.text?.trim() || ''; break;
           case 'email':
             const emailTo = data.email?.trim();
-            if (emailTo) {
-                 targetData = `mailto:${emailTo}?subject=${encodeURIComponent(data.subject || '')}&body=${encodeURIComponent(data.body || '')}`;
-            }
+            if (emailTo) targetData = `mailto:${emailTo}?subject=${encodeURIComponent(data.subject || '')}&body=${encodeURIComponent(data.body || '')}`;
             break;
           case 'phone': targetData = data.phone?.trim() ? `tel:${data.phone.trim()}` : ''; break;
           case 'whatsapp':
-            const phoneNum = (data.whatsapp_phone || '').replace(/[^0-9]/g, ''); // Keep only digits
+            const phoneNum = (data.whatsapp_phone || '').replace(/[^0-9]/g, '');
             targetData = phoneNum ? `https://wa.me/${phoneNum}?text=${encodeURIComponent(data.whatsapp_message || '')}` : '';
             break;
           case 'sms':
-            const smsPhoneNum = (data.sms_phone || '').trim(); // Allow + and digits
+            const smsPhoneNum = (data.sms_phone || '').trim();
             targetData = smsPhoneNum ? `sms:${smsPhoneNum}?body=${encodeURIComponent(data.sms_message || '')}` : '';
             break;
           case 'location':
-             if (data.latitude && data.longitude) {
-                targetData = `https://www.google.com/maps/search/?api=1&query=${data.latitude},${data.longitude}`;
-                // Could also use geo:lat,lng
-             }
+             if (data.latitude && data.longitude) targetData = `https://www.google.com/maps/search/?api=1&query=${data.latitude},${data.longitude}`;
              break;
           case 'event':
-              targetData = formatICS({
-                  summary: data.event_summary, location: data.event_location, description: data.event_description,
-                  startDate: data.event_start, endDate: data.event_end
-              });
+              targetData = formatICS({ summary: data.event_summary, location: data.event_location, description: data.event_description, startDate: data.event_start, endDate: data.event_end });
               break;
           case 'vcard':
-               targetData = formatVCard({
-                  firstName: data.vcard_firstName, lastName: data.vcard_lastName, organization: data.vcard_organization,
-                  title: data.vcard_title, phone: data.vcard_phone, mobile: data.vcard_mobile,
-                  email: data.vcard_email, website: data.vcard_website, address: data.vcard_address
-              });
+               targetData = formatVCard({ firstName: data.vcard_firstName, lastName: data.vcard_lastName, organization: data.vcard_organization, title: data.vcard_title, phone: data.vcard_phone, mobile: data.vcard_mobile, email: data.vcard_email, website: data.vcard_website, address: data.vcard_address });
                break;
           case 'wifi':
-               targetData = formatWifi({
-                  wifi_ssid: data.wifi_ssid, wifi_password: data.wifi_password,
-                  wifi_encryption: data.wifi_encryption || 'WPA/WPA2', wifi_hidden: data.wifi_hidden || false,
-              });
+               targetData = formatWifi({ wifi_ssid: data.wifi_ssid, wifi_password: data.wifi_password, wifi_encryption: data.wifi_encryption || 'WPA/WPA2', wifi_hidden: data.wifi_hidden || false });
                break;
           default: targetData = '';
         }
     } catch (error) {
         console.error(`Error generating QR data string for type ${type}:`, error);
         toast({ variant: "destructive", title: "Data Error", description: `Could not format data for ${type}. Please check your inputs.` });
-        return ''; // Return empty string on error
+        return '';
     }
-
     return targetData;
 };
 
 
 export function QrCodeGenerator() {
+  // Core QR State
   const [qrType, setQrType] = useState<QrType>('url');
   const [inputData, setInputData] = useState<Record<string, any>>({});
   const [options, setOptions] = useState<QRCodeStylingOptions>(defaultOptions);
   const [qrCodeInstance, setQrCodeInstance] = useState<QRCodeStyling | null>(null);
-  const [qrCodeSvgDataUrl, setQrCodeSvgDataUrl] = useState<string | null>(null); // State for SVG data URL
+  const [qrCodeSvgDataUrl, setQrCodeSvgDataUrl] = useState<string | null>(null);
+  const [isQrGenerated, setIsQrGenerated] = useState<boolean>(false);
+  const [qrPreviewKey, setQrPreviewKey] = useState<number>(Date.now()); // Use timestamp for key
+
+  // Customization State
   const [fileExtension, setFileExtension] = useState<FileExtension>('png');
   const [logoPreviewUrl, setLogoPreviewUrl] = useState<string | null>(null);
   const [originalLogoUrl, setOriginalLogoUrl] = useState<string | null>(null);
-  const [logoSize, setLogoSize] = useState<number>(defaultOptions.imageOptions?.imageSize ? defaultOptions.imageOptions.imageSize * 100 : 40); // Percentage
+  const [logoSize, setLogoSize] = useState<number>(defaultOptions.imageOptions?.imageSize ? defaultOptions.imageOptions.imageSize * 100 : 40);
   const [logoShape, setLogoShape] = useState<'square' | 'circle'>('square');
-  const [logoOpacity, setLogoOpacity] = useState<number>(100); // Percentage (0-100)
+  const [logoOpacity, setLogoOpacity] = useState<number>(100);
   const [qrLabel, setQrLabel] = useState<string>('');
   const [expiryDate, setExpiryDate] = useState<Date | undefined>(undefined);
-  const [expiryTime, setExpiryTime] = useState<string>("00:00"); // HH:mm format
-  const [wifiPasswordVisible, setWifiPasswordVisible] = useState<boolean>(false); // Start with password hidden for Wi-Fi
-  const [isQrGenerated, setIsQrGenerated] = useState<boolean>(false); // Track if a QR code is currently displayed
-  const [qrPreviewKey, setQrPreviewKey] = useState<number>(0); // Key to force re-render preview
+  const [expiryTime, setExpiryTime] = useState<string>("00:00");
+  const [wifiPasswordVisible, setWifiPasswordVisible] = useState<boolean>(false);
 
+   // History State
+  const [history, setHistory] = useState<HistoryItem[]>([]);
 
+  // Refs
   const logoInputRef = useRef<HTMLInputElement>(null);
 
-  // Generate QR Data String based on type and inputData
+
+  // --- History Management ---
+
+  // Load history from local storage on mount
+  useEffect(() => {
+    const loadedHistory = getLocalStorageItem<HistoryItem[]>(LOCAL_STORAGE_KEY, []);
+    setHistory(loadedHistory);
+  }, []);
+
+  // Add item to history
+  const addToHistory = useCallback((newItem: Omit<HistoryItem, 'id' | 'timestamp'>) => {
+     const fullItem: HistoryItem = {
+          ...newItem,
+          id: `qr-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`, // More unique ID
+          timestamp: Date.now(),
+      };
+
+    setHistory(prevHistory => {
+      const newHistory = [fullItem, ...prevHistory].slice(0, MAX_HISTORY_ITEMS);
+      setLocalStorageItem(LOCAL_STORAGE_KEY, newHistory);
+      return newHistory;
+    });
+  }, []);
+
+   // Clear history
+  const clearHistory = useCallback(() => {
+    setHistory([]);
+    setLocalStorageItem(LOCAL_STORAGE_KEY, []);
+    toast({ title: "History Cleared", description: "Your QR code generation history has been removed." });
+  }, []);
+
+
+  // --- QR Data Generation ---
   const generateQrData = useCallback((): string => {
       return generateQrDataString(qrType, inputData);
   }, [qrType, inputData]);
 
 
-  // Initialize and update QR Code instance, generate SVG data URL
+  // --- QR Code Instance & Preview Update ---
   useEffect(() => {
     const qrData = generateQrData();
-    setIsQrGenerated(!!qrData); // Update generated status based on data presence
+    const hasData = !!qrData;
+    setIsQrGenerated(hasData);
 
-    if (!qrData) {
-      setQrCodeSvgDataUrl(null); // Clear SVG if no data
-      setQrCodeInstance(null);
-      setQrPreviewKey(prev => prev + 1); // Force re-render placeholder
-      return;
+    let instance: QRCodeStyling | null = null;
+
+    if (hasData) {
+        const qrOptions = { ...options, data: qrData };
+         try {
+            instance = new QRCodeStyling(qrOptions);
+            setQrCodeInstance(instance); // Store for download
+
+             // Generate SVG preview
+            instance.getRawData('svg').then((blob) => {
+                if (blob) {
+                    const reader = new FileReader();
+                    reader.onload = () => {
+                        const svgDataUrl = reader.result as string;
+                        setQrCodeSvgDataUrl(svgDataUrl);
+                        setQrPreviewKey(Date.now()); // Update key
+
+                         // Save to history AFTER successful generation and preview update
+                        addToHistory({
+                            qrType: qrType,
+                            inputData: { ...inputData }, // Clone input data
+                            options: { // Store only the parts the user can customize directly
+                                dotsOptions: options.dotsOptions,
+                                backgroundOptions: options.backgroundOptions,
+                                cornersSquareOptions: options.cornersSquareOptions,
+                                cornersDotOptions: options.cornersDotOptions,
+                                image: options.image, // Store processed logo URL if any
+                                imageOptions: options.imageOptions,
+                                width: options.width,
+                                height: options.height,
+                            },
+                            label: qrLabel,
+                            previewSvgDataUrl: svgDataUrl,
+                        });
+                    };
+                    reader.readAsDataURL(blob);
+                } else {
+                    setQrCodeSvgDataUrl(null);
+                    toast({ variant: "destructive", title: "QR Preview Error", description: "Could not generate SVG preview." });
+                }
+            }).catch(error => {
+                console.error("Error getting SVG data:", error);
+                setQrCodeSvgDataUrl(null);
+                toast({ variant: "destructive", title: "QR Preview Error", description: "Could not generate SVG preview." });
+            });
+
+         } catch (error) {
+            console.error("Error creating QR code instance:", error);
+            setQrCodeSvgDataUrl(null);
+            setQrCodeInstance(null);
+            setIsQrGenerated(false);
+            toast({ variant: "destructive", title: "QR Generation Error", description: "Could not create the QR code. Check data or try again." });
+            setQrPreviewKey(Date.now());
+         }
+
+    } else {
+        // No data, clear everything
+        setQrCodeSvgDataUrl(null);
+        setQrCodeInstance(null);
+        setQrPreviewKey(Date.now());
     }
 
-    const qrOptions = { ...options, data: qrData };
-
-    try {
-      const instance = new QRCodeStyling(qrOptions);
-      setQrCodeInstance(instance); // Keep instance for download
-
-      // Generate SVG data URL for preview
-      instance.getRawData('svg').then((blob) => {
-        if (blob) {
-          const reader = new FileReader();
-          reader.onload = () => {
-            setQrCodeSvgDataUrl(reader.result as string);
-            setQrPreviewKey(prev => prev + 1); // Update key to re-render preview
-          };
-          reader.readAsDataURL(blob);
-        } else {
-             setQrCodeSvgDataUrl(null);
-             toast({ variant: "destructive", title: "QR Preview Error", description: "Could not generate SVG preview." });
-        }
-      }).catch(error => {
-          console.error("Error getting SVG data:", error);
-          setQrCodeSvgDataUrl(null);
-          toast({ variant: "destructive", title: "QR Preview Error", description: "Could not generate SVG preview." });
-      });
-
-    } catch (error) {
-      console.error("Error creating QR code instance:", error);
-      setQrCodeSvgDataUrl(null); // Clear SVG on error
-      setQrCodeInstance(null);
-      setIsQrGenerated(false);
-      toast({ variant: "destructive", title: "QR Generation Error", description: "Could not create the QR code. Please try again." });
-       setQrPreviewKey(prev => prev + 1); // Force re-render error state/placeholder
-    }
+    // Cleanup function to clear canvas/SVG if component unmounts or options change drastically
+    return () => {
+        // If using a ref for a div, clear it here: qrCodeRef.current.innerHTML = '';
+        // The library seems to manage its own SVG element, relying on state re-render is okay here.
+    };
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [options, qrType, inputData]); // Re-run when options, type, or data changes
+  }, [options, qrType, inputData, qrLabel, addToHistory]); // Added addToHistory and qrLabel
+
+
+   // Reload settings from a history item
+  const loadFromHistory = useCallback((item: HistoryItem) => {
+    setQrType(item.qrType);
+    setInputData(item.inputData);
+    // Reconstruct full options from stored partial options + defaults
+    setOptions(prev => ({
+        ...defaultOptions, // Start with defaults
+        ...prev,          // Keep existing non-customizable options (like 'type: svg')
+        ...item.options,  // Apply stored customizable options
+        data: generateQrDataString(item.qrType, item.inputData) // Regenerate data string
+    }));
+    setQrLabel(item.label);
+    setQrCodeSvgDataUrl(item.previewSvgDataUrl); // Directly set preview
+
+    // Attempt to reconstruct logo state
+    if (item.options.image) {
+        // Assuming item.options.image holds the processed (e.g., circular) data URL
+        setLogoPreviewUrl(item.options.image);
+        // We don't have the original URL, so reset that state or handle appropriately
+        setOriginalLogoUrl(null); // Or try to infer if it's a common logo shape? Difficult.
+        setLogoSize(item.options.imageOptions?.imageSize ? item.options.imageOptions.imageSize * 100 : 40);
+        // Infer shape based on how processing was done? Difficult. Default to square or check if URL suggests circle.
+        setLogoShape('square'); // Default assumption when reloading
+        // Opacity might not be directly stored in imageOptions; might need explicit storage or default
+        setLogoOpacity(100); // Default assumption
+    } else {
+        removeLogo(); // Clear logo if none in history item
+    }
+
+    // Reset expiry state as it's not stored (or implement storing it)
+    setExpiryDate(undefined);
+    setExpiryTime("00:00");
+
+    setQrPreviewKey(Date.now()); // Force preview update
+    toast({ title: "Loaded from History", description: `Restored QR code configuration from ${format(item.timestamp, 'PP pp')}.` });
+  }, [removeLogo]);
 
 
   // --- Input Handlers ---
   const handleInputChange = (key: string, value: any) => {
-    // Basic validation within handler if needed (e.g., number fields)
-    if ((key === 'latitude' || key === 'longitude') && value && isNaN(Number(value))) {
-        return; // Prevent non-numeric input for coordinates
-    }
+    if ((key === 'latitude' || key === 'longitude') && value && isNaN(Number(value))) return;
     setInputData(prev => ({ ...prev, [key]: value }));
   };
 
@@ -356,23 +451,17 @@ export function QrCodeGenerator() {
 
   const handleDateChange = (key: string, date: Date | undefined) => {
     let newData = { ...inputData, [key]: date };
-
-     // Auto-set end date if start date is set and end date is empty or earlier
      if (key === 'event_start' && date) {
          const currentEndDate = inputData.event_end;
          if (!currentEndDate || currentEndDate < date) {
-             const defaultEndDate = new Date(date.getTime() + 60 * 60 * 1000); // Default 1 hour later
+             const defaultEndDate = new Date(date.getTime() + 60 * 60 * 1000);
              newData = { ...newData, event_end: defaultEndDate };
          }
      }
-     // Ensure end date is not before start date
       if (key === 'event_end' && date && inputData.event_start && date < inputData.event_start) {
           toast({ variant: "destructive", title: "Invalid Date", description: "End date cannot be before start date." });
-          // Keep previous valid end date or reset
-          // For simplicity, we prevent setting the invalid date but don't automatically correct it here
-          return; // Stop update if invalid
+          return;
       }
-
     setInputData(newData);
   };
 
@@ -382,22 +471,16 @@ export function QrCodeGenerator() {
          const [hours, minutes] = timeValue.split(':').map(Number);
          const newDate = new Date(currentDate);
          newDate.setHours(hours, minutes, 0, 0);
-
-         // Ensure end time is not before start time on the same day
          if (key === 'event_end' && inputData.event_start && newDate < inputData.event_start) {
              toast({ variant: "destructive", title: "Invalid Time", description: "End time cannot be before start time." });
-             return; // Stop update
+             return;
          }
-           if (key === 'event_start' && inputData.event_end && newDate > inputData.event_end) {
-             // If changing start time makes it after end time, adjust end time (e.g., +1 hour)
-              const newEndDate = new Date(newDate.getTime() + 60 * 60 * 1000);
-              handleDateChange('event_end', newEndDate); // Use existing handler to update end date
-          }
-
+         if (key === 'event_start' && inputData.event_end && newDate > inputData.event_end) {
+             const newEndDate = new Date(newDate.getTime() + 60 * 60 * 1000);
+             handleDateChange('event_end', newEndDate);
+         }
          handleDateChange(key, newDate);
      } else {
-         // If date is not set yet, just store the time? This might be complex.
-         // Better to require date first or handle this case specifically.
          toast({ title: "Set Date First", description: "Please select a date before setting the time." });
      }
   };
@@ -428,8 +511,7 @@ export function QrCodeGenerator() {
 
   const handleQrSizeChange = (value: number[]) => {
       const size = value[0];
-       // Add constraints if needed (e.g., min/max practical size)
-       if (size >= 50 && size <= 2000) {
+       if (size >= 50 && size <= 1000) { // Allow up to 1000px
             setOptions(prev => ({ ...prev, width: size, height: size }));
        }
   }
@@ -437,12 +519,11 @@ export function QrCodeGenerator() {
   const handleLogoSizeChange = (value: number[]) => {
      const sizePercent = value[0];
      setLogoSize(sizePercent);
-     const imageSizeValue = Math.max(0.1, Math.min(0.5, sizePercent / 100)); // Ensure range 0.1 to 0.5 for library
+     const imageSizeValue = Math.max(0.1, Math.min(0.5, sizePercent / 100));
      setOptions(prev => ({
          ...prev,
          imageOptions: { ...(prev.imageOptions ?? defaultOptions.imageOptions), imageSize: imageSizeValue }
      }));
-     // Re-process image if one exists
      if (originalLogoUrl) {
           applyLogoShapeAndOpacity(originalLogoUrl, logoShape, logoOpacity / 100);
      }
@@ -467,83 +548,71 @@ export function QrCodeGenerator() {
   // --- Logo Handling ---
  const applyLogoShapeAndOpacity = useCallback(async (imageUrl: string, shape: 'square' | 'circle', opacity: number) => {
     try {
-      // Get current image options or use defaults, ensuring imageSize is updated from state
       const currentImageOptions = {
         ...(options.imageOptions ?? defaultOptions.imageOptions),
-        imageSize: Math.max(0.1, Math.min(0.5, logoSize / 100)), // Use state value, clamped
+        imageSize: Math.max(0.1, Math.min(0.5, logoSize / 100)),
       };
-
-      // Process image with current shape and opacity
-      const processedImageUrl = await processImage(imageUrl, shape, 200, opacity); // 200px canvas size for processing
-      setLogoPreviewUrl(processedImageUrl); // Update visual preview in options panel
+      const processedImageUrl = await processImage(imageUrl, shape, 200, opacity); // Use fixed canvas size for processing
+      setLogoPreviewUrl(processedImageUrl);
        setOptions(prev => ({
            ...prev,
-           image: processedImageUrl, // Set processed image for QR instance
-           imageOptions: currentImageOptions // Ensure options are up-to-date
+           image: processedImageUrl,
+           imageOptions: currentImageOptions
        }));
     } catch (error) {
         console.error("Error processing logo image:", error);
         toast({ variant: "destructive", title: "Logo Error", description: "Could not process the logo image. Using original." });
-        setLogoPreviewUrl(imageUrl); // Fallback to original for preview
+        setLogoPreviewUrl(imageUrl);
          setOptions(prev => ({
              ...prev,
-             image: imageUrl, // Use original URL for QR instance on error
+             image: imageUrl,
               imageOptions: {
                 ...(options.imageOptions ?? defaultOptions.imageOptions),
-                imageSize: Math.max(0.1, Math.min(0.5, logoSize / 100)), // Keep size option
+                imageSize: Math.max(0.1, Math.min(0.5, logoSize / 100)),
              }
          }));
     }
  // eslint-disable-next-line react-hooks/exhaustive-deps
- }, [logoSize, setOptions]); // Dependencies updated
+ }, [logoSize, options.imageOptions]); // Include options.imageOptions
 
 
  const handleLogoUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      // Basic file type validation
       if (!['image/png', 'image/jpeg', 'image/gif', 'image/svg+xml', 'image/webp'].includes(file.type)) {
            toast({ variant: "destructive", title: "Invalid File Type", description: "Please upload a PNG, JPEG, GIF, WEBP or SVG image." });
            return;
       }
-       // Basic file size validation (e.g., 2MB limit)
        if (file.size > 2 * 1024 * 1024) {
             toast({ variant: "destructive", title: "File Too Large", description: "Logo image should be less than 2MB." });
             return;
        }
-
       const reader = new FileReader();
       reader.onloadend = () => {
         const imageUrl = reader.result as string;
         setOriginalLogoUrl(imageUrl);
-        // Apply current shape/opacity settings to the new logo
         applyLogoShapeAndOpacity(imageUrl, logoShape, logoOpacity / 100);
       };
-      reader.onerror = () => {
-          toast({ variant: "destructive", title: "File Read Error", description: "Could not read the selected file." });
-      };
+      reader.onerror = () => toast({ variant: "destructive", title: "File Read Error", description: "Could not read the selected file." });
       reader.readAsDataURL(file);
     }
  }, [logoShape, logoOpacity, applyLogoShapeAndOpacity]);
 
- const triggerLogoUpload = () => {
-    logoInputRef.current?.click();
-  };
+ const triggerLogoUpload = () => logoInputRef.current?.click();
 
- const removeLogo = () => {
+ const removeLogo = useCallback(() => {
      setOriginalLogoUrl(null);
      setLogoPreviewUrl(null);
-     // Reset options related to image
      setOptions(prev => ({
          ...prev,
          image: '',
-         imageOptions: { ...(prev.imageOptions ?? defaultOptions.imageOptions), margin: 5, imageSize: 0.4 }, // Reset some image options
+         imageOptions: { ...(prev.imageOptions ?? defaultOptions.imageOptions), margin: 5, imageSize: 0.4 },
      }));
-     setLogoSize(40); // Reset slider state
+     setLogoSize(40);
      setLogoShape('square');
      setLogoOpacity(100);
-     if (logoInputRef.current) logoInputRef.current.value = ''; // Clear file input
- };
+     if (logoInputRef.current) logoInputRef.current.value = '';
+ }, []);
 
 
  // --- Expiry Handling ---
@@ -572,32 +641,24 @@ export function QrCodeGenerator() {
          const [hours, minutes] = expiryTime.split(':').map(Number);
          combinedDate = new Date(date);
          combinedDate.setHours(hours, minutes, 0, 0);
-
          if (combinedDate < new Date()) {
              toast({ variant: "destructive", title: "Invalid Date", description: "Expiry date cannot be in the past." });
-             // Option 1: Reset everything
-             // setExpiryDate(undefined);
-             // setExpiryTime("00:00");
-             // Option 2: Keep the date but reset time to now + 1 min (or similar)
              const nowPlus1Min = new Date(Date.now() + 60000);
-             if (date.toDateString() === new Date().toDateString()) { // If today's date was picked
+             if (date.toDateString() === new Date().toDateString()) {
                  combinedDate = nowPlus1Min;
                  setExpiryTime(format(combinedDate, "HH:mm"));
-                 toast({ title: "Time Adjusted", description: "Expiry time set to the near future as selected time was in the past." });
+                 toast({ title: "Time Adjusted", description: "Expiry time set to the near future." });
              } else {
-                 // If a future date was picked with past time, just reset time part?
-                  setExpiryTime("00:00"); // Reset time input
-                  toast({ title: "Time Reset", description: "Expiry time was in the past for the selected date, please set a future time." });
-                  combinedDate = undefined; // Don't set invalid date state
+                  setExpiryTime("00:00");
+                  toast({ title: "Time Reset", description: "Expiry time was in the past, please set a future time." });
+                  combinedDate = undefined;
              }
-              setExpiryDate(combinedDate); // Update state only if valid or adjusted
-
+              setExpiryDate(combinedDate);
          } else {
              setExpiryDate(combinedDate);
              toast({ title: "Expiry Reminder Set", description: `QR code visually marked to expire on ${format(combinedDate, "PPP 'at' HH:mm")}. (Backend needed for real expiry)` });
          }
      } else {
-         // Clear expiry
          setExpiryDate(undefined);
          setExpiryTime("00:00");
          toast({ title: "Expiry Removed", description: "QR code expiry marker removed." });
@@ -606,25 +667,18 @@ export function QrCodeGenerator() {
 
  const handleTimeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
      const timeValue = e.target.value;
-     setExpiryTime(timeValue); // Update time state immediately
-
+     setExpiryTime(timeValue);
      if (expiryDate) {
          const [hours, minutes] = timeValue.split(':').map(Number);
-         const updatedDate = new Date(expiryDate); // Use existing date
+         const updatedDate = new Date(expiryDate);
          updatedDate.setHours(hours, minutes, 0, 0);
-
-         // Prevent setting expiry in the past
          if (updatedDate < new Date()) {
-             toast({ variant: "destructive", title: "Invalid Time", description: "Expiry time cannot be in the past for the selected date." });
-             // Revert time state to previous valid time from expiryDate
+             toast({ variant: "destructive", title: "Invalid Time", description: "Expiry time cannot be in the past." });
              setExpiryTime(format(expiryDate, "HH:mm"));
          } else {
-             setExpiryDate(updatedDate); // Update the full expiry date state
-             // Optional: Quieter toast on time-only update if date already set
-             // toast({ title: "Expiry Time Updated", description: `Expiry set for ${format(updatedDate, "PPP 'at' HH:mm")}.`, duration: 3000 });
+             setExpiryDate(updatedDate);
          }
      }
-     // If no date is set, the time will be applied when a date is picked via handleManualExpiryChange
  };
 
 
@@ -635,20 +689,10 @@ export function QrCodeGenerator() {
           toast({ variant: "destructive", title: "Cannot Download", description: "Please generate a valid QR code first." });
           return;
       }
+      if (expiryDate) toast({ title: "Download Info", description: "Note: Expiry is a visual marker only.", duration: 5000 });
 
-      // Reminder about expiry feature limitation
-      if (expiryDate) {
-          toast({ title: "Download Info", description: "Note: Expiry is a visual marker. Real expiry needs a backend service.", duration: 5000 });
-      }
-
-       // Note: Labels are not part of the QR code data itself and won't be in the downloaded file.
-      if (qrLabel) {
-          // This feature is visual only, label is not embedded in QR
-          // toast({ title: "Label Info", description: "The label text is for display only and not part of the downloaded QR code.", duration: 5000 });
-      }
-
-      // Update instance options before download (especially if options changed but instance wasn't recreated yet)
-      qrCodeInstance.update({ ...options, data: qrData });
+      // Ensure latest options are applied before download
+       qrCodeInstance.update({ ...options, data: qrData });
 
       try {
             await qrCodeInstance.download({ name: `linkspark-qr-${qrType}`, extension: fileExtension as Extension });
@@ -657,14 +701,12 @@ export function QrCodeGenerator() {
           console.error("Error downloading QR code:", error);
           toast({ variant: "destructive", title: "Download Failed", description: "Could not download the QR code. Please try again." });
       }
-  }, [qrCodeInstance, options, fileExtension, qrType, qrLabel, expiryDate, generateQrData, isQrGenerated]); // Added options to dependencies
+  }, [qrCodeInstance, options, fileExtension, qrType, expiryDate, generateQrData, isQrGenerated]);
 
 
   // --- Render Dynamic Inputs ---
   const renderInputs = () => {
-     // Find the description for the current QR type
     const currentTypeDescription = qrTypeOptions.find(opt => opt.value === qrType)?.description || '';
-
     const commonWrapperClass = "space-y-4 border p-4 rounded-md bg-muted/30 shadow-inner";
 
     return (
@@ -770,14 +812,14 @@ export function QrCodeGenerator() {
                                                 <PopoverTrigger asChild>
                                                     <Button variant="outline" className={cn("w-full justify-start text-left font-normal", !inputData.event_start && "text-muted-foreground")}>
                                                         <CalendarIcon className="mr-2 h-4 w-4" />
-                                                        {inputData.event_start ? format(inputData.event_start, "PPP HH:mm") : <span>Pick start date/time</span>}
+                                                        {inputData.event_start ? format(new Date(inputData.event_start), "PPP HH:mm") : <span>Pick start date/time</span>}
                                                     </Button>
                                                 </PopoverTrigger>
                                                 <PopoverContent className="w-auto p-0">
-                                                    <Calendar mode="single" selected={inputData.event_start} onSelect={(date) => handleDateChange('event_start', date)} initialFocus />
+                                                    <Calendar mode="single" selected={inputData.event_start ? new Date(inputData.event_start) : undefined} onSelect={(date) => handleDateChange('event_start', date)} initialFocus />
                                                     <div className="p-3 border-t">
                                                          <Label htmlFor="event-start-time" className="text-xs">Time</Label>
-                                                         <Input id="event-start-time" type="time" defaultValue={inputData.event_start ? format(inputData.event_start, "HH:mm") : "09:00"} onChange={(e) => handleTimeInputChange('event_start', e.target.value)} />
+                                                         <Input id="event-start-time" type="time" defaultValue={inputData.event_start ? format(new Date(inputData.event_start), "HH:mm") : "09:00"} onChange={(e) => handleTimeInputChange('event_start', e.target.value)} />
                                                     </div>
                                                 </PopoverContent>
                                             </Popover>
@@ -788,14 +830,14 @@ export function QrCodeGenerator() {
                                                 <PopoverTrigger asChild>
                                                     <Button variant="outline" className={cn("w-full justify-start text-left font-normal", !inputData.event_end && "text-muted-foreground")}>
                                                         <CalendarIcon className="mr-2 h-4 w-4" />
-                                                        {inputData.event_end ? format(inputData.event_end, "PPP HH:mm") : <span>Pick end date/time</span>}
+                                                        {inputData.event_end ? format(new Date(inputData.event_end), "PPP HH:mm") : <span>Pick end date/time</span>}
                                                     </Button>
                                                 </PopoverTrigger>
                                                 <PopoverContent className="w-auto p-0">
-                                                    <Calendar mode="single" selected={inputData.event_end} onSelect={(date) => handleDateChange('event_end', date)} initialFocus disabled={(date) => inputData.event_start && date < new Date(inputData.event_start.setHours(0,0,0,0))} />
+                                                    <Calendar mode="single" selected={inputData.event_end ? new Date(inputData.event_end) : undefined} onSelect={(date) => handleDateChange('event_end', date)} initialFocus disabled={(date) => inputData.event_start && date < new Date(new Date(inputData.event_start).setHours(0,0,0,0))} />
                                                     <div className="p-3 border-t">
                                                          <Label htmlFor="event-end-time" className="text-xs">Time</Label>
-                                                         <Input id="event-end-time" type="time" defaultValue={inputData.event_end ? format(inputData.event_end, "HH:mm") : "10:00"} onChange={(e) => handleTimeInputChange('event_end', e.target.value)} />
+                                                         <Input id="event-end-time" type="time" defaultValue={inputData.event_end ? format(new Date(inputData.event_end), "HH:mm") : "10:00"} onChange={(e) => handleTimeInputChange('event_end', e.target.value)} />
                                                     </div>
                                                 </PopoverContent>
                                             </Popover>
@@ -910,6 +952,32 @@ export function QrCodeGenerator() {
   };
 
 
+  // --- Render History Items ---
+ const renderHistoryItem = (item: HistoryItem) => {
+    const Icon = qrTypeOptions.find(opt => opt.value === item.qrType)?.icon || QrCodeIcon;
+    const description = item.label || `${item.qrType.toUpperCase()} QR`;
+    return (
+      <div key={item.id} className="flex items-center justify-between gap-3 p-3 border-b last:border-b-0 hover:bg-muted/50 transition-colors">
+        <div className="flex items-center gap-3 overflow-hidden">
+          {item.previewSvgDataUrl ? (
+            <img src={item.previewSvgDataUrl} alt="QR Preview" className="h-10 w-10 rounded border object-contain bg-white shrink-0" />
+          ) : (
+            <div className="h-10 w-10 rounded border bg-muted flex items-center justify-center shrink-0">
+              <Icon className="h-5 w-5 text-muted-foreground" />
+            </div>
+          )}
+          <div className="flex-grow overflow-hidden">
+            <p className="text-sm font-medium truncate" title={description}>{description}</p>
+            <p className="text-xs text-muted-foreground">{format(item.timestamp, 'MMM d, HH:mm')}</p>
+          </div>
+        </div>
+        <Button variant="ghost" size="icon" onClick={() => loadFromHistory(item)} aria-label="Reload this QR code">
+          <RefreshCcw className="h-4 w-4" />
+        </Button>
+      </div>
+    );
+  };
+
 
   // --- Main Render ---
   return (
@@ -921,230 +989,256 @@ export function QrCodeGenerator() {
              <p className="text-sm text-muted-foreground">Generate and personalize QR codes for various purposes.</p>
           </CardHeader>
           <CardContent className="space-y-6">
-             {/* QR Type Selection */}
-             <div className="space-y-2">
-                <Label htmlFor="qr-type">1. Select QR Code Type</Label>
-                <Select onValueChange={(value: QrType) => { setQrType(value); setInputData({}); setExpiryDate(undefined); setQrLabel(''); }} defaultValue={qrType}> {/* Reset input data, expiry, label on type change */}
-                    <SelectTrigger id="qr-type" className="w-full">
-                        <SelectValue placeholder="Select QR code type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                        {qrTypeOptions.map(option => (
-                            <SelectItem key={option.value} value={option.value}>
-                                <div className="flex items-center gap-2">
-                                    <option.icon className="h-4 w-4 text-muted-foreground" />
-                                    {option.label}
-                                </div>
-                            </SelectItem>
-                        ))}
-                    </SelectContent>
-                </Select>
-             </div>
+             {/* Tabs for Content/Styling/History */}
+             <Tabs defaultValue="content" className="w-full">
+                <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4">
+                    <TabsTrigger value="content"><QrCodeIcon className="inline-block mr-1 h-4 w-4" /> Content</TabsTrigger>
+                    <TabsTrigger value="styling"><Palette className="inline-block mr-1 h-4 w-4" /> Styling</TabsTrigger>
+                    <TabsTrigger value="logo"><ImageIcon className="inline-block mr-1 h-4 w-4" /> Logo</TabsTrigger>
+                    <TabsTrigger value="history"><HistoryIcon className="inline-block mr-1 h-4 w-4" /> History</TabsTrigger>
+                </TabsList>
 
-             {/* Dynamic Inputs */}
-              <div className="space-y-2">
-                <Label>2. Enter Content</Label>
-                 {renderInputs()}
-              </div>
-
-
-             {/* Customization Tabs */}
-             <div className="space-y-2">
-                <Label>3. Customize Appearance (Optional)</Label>
-                <Tabs defaultValue="styling" className="w-full">
-                    <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3">
-                        <TabsTrigger value="styling"><Palette className="inline-block mr-1 h-4 w-4" /> Styling</TabsTrigger>
-                        <TabsTrigger value="logo"><ImageIcon className="inline-block mr-1 h-4 w-4" /> Logo</TabsTrigger>
-                        {/* Expiry Tab remains optional/visual only */}
-                        <TabsTrigger value="extras"><Settings2 className="inline-block mr-1 h-4 w-4" /> Extras</TabsTrigger>
-                         {/*<TabsTrigger value="expiry"><Clock className="inline-block mr-1 h-4 w-4" /> Expiry</TabsTrigger>*/}
-                    </TabsList>
-
-                    {/* Styling Tab */}
-                    <TabsContent value="styling" className="pt-6 space-y-6 border p-4 rounded-b-md bg-muted/10">
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                            <div className="space-y-2">
-                                <Label htmlFor="dot-color">Dots</Label>
-                                <Input id="dot-color" type="color" value={options.dotsOptions?.color || '#000000'} onChange={(e) => handleColorChange('dots', e.target.value)} className="h-10 p-1 w-full" />
-                            </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="bg-color">Background</Label>
-                                <Input id="bg-color" type="color" value={options.backgroundOptions?.color || '#ffffff'} onChange={(e) => handleColorChange('background', e.target.value)} className="h-10 p-1 w-full" />
-                            </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="corner-square-color">Corners</Label>
-                                <Input id="corner-square-color" type="color" value={options.cornersSquareOptions?.color || '#000000'} onChange={(e) => handleColorChange('cornersSquare', e.target.value)} className="h-10 p-1 w-full" />
-                            </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="corner-dot-color">Corner Dots</Label>
-                                <Input id="corner-dot-color" type="color" value={options.cornersDotOptions?.color || '#000000'} onChange={(e) => handleColorChange('cornersDot', e.target.value)} className="h-10 p-1 w-full" />
-                            </div>
-                        </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                            <div className="space-y-2">
-                                <Label htmlFor="dot-style">Dot Style</Label>
-                                <Select onValueChange={(value: DotType) => handleDotStyleChange(value)} defaultValue={options.dotsOptions?.type}>
-                                    <SelectTrigger id="dot-style"><SelectValue /></SelectTrigger>
-                                    <SelectContent>{dotTypes.map(type => <SelectItem key={type} value={type}>{type}</SelectItem>)}</SelectContent>
-                                </Select>
-                            </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="corner-square-style">Corner Style</Label>
-                                <Select onValueChange={(value: CornerSquareType) => handleCornerStyleChange('cornersSquare', value)} defaultValue={options.cornersSquareOptions?.type ?? cornerSquareTypes[0]}>
-                                    <SelectTrigger id="corner-square-style"><SelectValue /></SelectTrigger>
-                                    <SelectContent>{cornerSquareTypes.map(type => <SelectItem key={type} value={type}>{type}</SelectItem>)}</SelectContent>
-                                </Select>
-                            </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="corner-dot-style">Corner Dot Style</Label>
-                                <Select onValueChange={(value: CornerDotType) => handleCornerStyleChange('cornersDot', value)} defaultValue={options.cornersDotOptions?.type ?? cornerDotTypes[0]}>
-                                    <SelectTrigger id="corner-dot-style"><SelectValue /></SelectTrigger>
-                                    <SelectContent>{cornerDotTypes.map(type => <SelectItem key={type} value={type}>{type}</SelectItem>)}</SelectContent>
-                                </Select>
-                            </div>
-                        </div>
-
-                    </TabsContent>
-
-                    {/* Logo Tab */}
-                    <TabsContent value="logo" className="pt-6 space-y-6 border p-4 rounded-b-md bg-muted/10">
-                        <div className="space-y-2">
-                            <Label htmlFor="logo-upload">Center Logo/Image</Label>
-                            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
-                                <Button variant="outline" onClick={triggerLogoUpload} className="w-full sm:w-auto flex-grow justify-start text-left font-normal">
-                                    <Upload className="mr-2 h-4 w-4" />
-                                    {logoPreviewUrl ? "Change Image" : "Upload Image (PNG, JPG, SVG...)"}
-                                </Button>
-                                <Input ref={logoInputRef} id="logo-upload" type="file" accept="image/png, image/jpeg, image/gif, image/svg+xml, image/webp" onChange={handleLogoUpload} className="hidden" />
-                                {logoPreviewUrl && (
-                                    <div className='flex items-center gap-2'>
-                                        <img src={logoPreviewUrl} alt="Logo Preview" className="h-10 w-10 rounded object-contain border bg-white" />
-                                        <Button variant="destructive" size="sm" onClick={removeLogo} aria-label="Remove logo">
-                                            <Trash2 className="h-4 w-4" />
-                                        </Button>
-                                    </div>
-                                )}
-                            </div>
-                             <p className="text-xs text-muted-foreground">Max file size: 2MB. Recommended: Square image.</p>
-                        </div>
-
-                        {logoPreviewUrl && (
-                            <>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                    <div className="space-y-3">
-                                        <Label htmlFor="logo-size">Logo Size ({logoSize}%)</Label>
+                {/* Content Tab */}
+                <TabsContent value="content" className="pt-6 space-y-6">
+                    {/* QR Type Selection */}
+                    <div className="space-y-2">
+                        <Label htmlFor="qr-type">1. Select QR Code Type</Label>
+                        <Select onValueChange={(value: QrType) => { setQrType(value); setInputData({}); setExpiryDate(undefined); setQrLabel(''); }} defaultValue={qrType}>
+                            <SelectTrigger id="qr-type" className="w-full">
+                                <SelectValue placeholder="Select QR code type" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {qrTypeOptions.map(option => (
+                                    <SelectItem key={option.value} value={option.value}>
                                         <div className="flex items-center gap-2">
-                                            <Slider id="logo-size" value={[logoSize]} min={10} max={50} step={1} onValueChange={handleLogoSizeChange} />
-                                            <span className='text-sm w-10 text-right'>{logoSize}%</span>
+                                            <option.icon className="h-4 w-4 text-muted-foreground" />
+                                            {option.label}
                                         </div>
-                                        <p className="text-xs text-muted-foreground">Relative to QR code size. Default: 40%.</p>
-                                    </div>
-                                    <div className="space-y-3">
-                                        <Label htmlFor="logo-opacity">Logo Opacity ({logoOpacity}%)</Label>
-                                         <div className="flex items-center gap-2">
-                                            <Slider id="logo-opacity" value={[logoOpacity]} min={10} max={100} step={5} onValueChange={handleLogoOpacityChange} />
-                                             <span className='text-sm w-10 text-right'>{logoOpacity}%</span>
-                                         </div>
-                                        <p className="text-xs text-muted-foreground">Lower opacity might improve scanability.</p>
-                                    </div>
-                                </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="logo-shape">Logo Shape</Label>
-                                    <Select onValueChange={handleLogoShapeChange} defaultValue={logoShape}>
-                                        <SelectTrigger id="logo-shape" className="w-full sm:w-1/2"><SelectValue /></SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="square">Square</SelectItem>
-                                            <SelectItem value="circle">Circle</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                    <p className="text-xs text-muted-foreground">Applies a circular mask if selected.</p>
-                                </div>
-                                <div className="flex items-center space-x-2 pt-2">
-                                    <Checkbox id="hide-dots" checked={options.imageOptions?.hideBackgroundDots} onCheckedChange={(checked) => setOptions(prev => ({ ...prev, imageOptions: {...(prev.imageOptions ?? defaultOptions.imageOptions), hideBackgroundDots: Boolean(checked)} }))}/>
-                                    <Label htmlFor="hide-dots" className="text-sm font-medium leading-none">
-                                        Hide Dots Behind Logo
-                                    </Label>
-                                     <TooltipProvider>
-                                        <Tooltip>
-                                            <TooltipTrigger asChild>
-                                                <Info className="h-4 w-4 text-muted-foreground cursor-help" />
-                                            </TooltipTrigger>
-                                            <TooltipContent>
-                                                <p>Removes QR dots located behind the logo area.</p>
-                                                <p>Can improve logo visibility but may slightly affect scanability.</p>
-                                            </TooltipContent>
-                                        </Tooltip>
-                                     </TooltipProvider>
-                                </div>
-                            </>
-                        )}
-                    </TabsContent>
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
+                     {/* Dynamic Inputs */}
+                    <div className="space-y-2">
+                        <Label>2. Enter Content</Label>
+                        {renderInputs()}
+                    </div>
+                </TabsContent>
 
-                     {/* Extras Tab */}
-                     <TabsContent value="extras" className="pt-6 space-y-6 border p-4 rounded-b-md bg-muted/10">
-                         <div className="space-y-3">
-                             <Label htmlFor="qr-size">QR Code Size ({options.width}px)</Label>
-                             <div className="flex items-center gap-2">
-                                <Slider id="qr-size" value={[options.width ?? 256]} min={100} max={1000} step={4} onValueChange={handleQrSizeChange} />
-                                <span className='text-sm w-14 text-right'>{options.width} px</span>
-                             </div>
-                             <p className="text-xs text-muted-foreground">Adjusts the preview size. Download size depends on format.</p>
-                         </div>
-                         <div className="space-y-2">
-                             <Label htmlFor="qr-label">Label Text (Visual Only)</Label>
-                             <Input id="qr-label" type="text" value={qrLabel} onChange={(e) => setQrLabel(e.target.value)} placeholder="e.g., Scan Me!" maxLength={30} />
-                             <p className="text-xs text-muted-foreground">This label appears below the preview but is not part of the downloaded QR code.</p>
-                         </div>
-                          {/* Expiry section moved here */}
-                         <div className='pt-4 border-t'>
-                            <Label>Expiry Reminder (Visual Only)</Label>
-                            <p className="text-xs text-muted-foreground pb-2">Mark the QR code with an intended expiry. <strong className='text-foreground/80'>Actual expiration requires a backend service.</strong></p>
-                            <div className="flex flex-wrap gap-2">
-                                <Button variant={!expiryDate ? "secondary" : "outline"} size="sm" onClick={() => handleSetExpiryPreset(null)}>No Expiry</Button>
-                                <Button variant={expiryDate && Math.abs(new Date().getTime() + 1*60*60*1000 - expiryDate.getTime()) < 1000 ? "secondary" : "outline"} size="sm" onClick={() => handleSetExpiryPreset('1h')}>1 Hour</Button>
-                                <Button variant={expiryDate && Math.abs(new Date().getTime() + 24*60*60*1000 - expiryDate.getTime()) < 1000 ? "secondary" : "outline"} size="sm" onClick={() => handleSetExpiryPreset('24h')}>24 Hours</Button>
-                                <Button variant={expiryDate && Math.abs(new Date().getTime() + 7*24*60*60*1000 - expiryDate.getTime()) < 1000 ? "secondary" : "outline"} size="sm" onClick={() => handleSetExpiryPreset('7d')}>7 Days</Button>
-                            </div>
-                            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 pt-4">
-                                <div className="space-y-2">
-                                    <Label>Manual Expiry Date & Time</Label>
-                                    <Popover>
-                                        <PopoverTrigger asChild>
-                                            <Button variant="outline" className={cn("w-full justify-start text-left font-normal", !expiryDate && "text-muted-foreground")}>
-                                                <CalendarIcon className="mr-2 h-4 w-4" />
-                                                {expiryDate ? format(expiryDate, "PPP HH:mm") : <span>Pick expiry date/time</span>}
-                                            </Button>
-                                        </PopoverTrigger>
-                                        <PopoverContent className="w-auto p-0">
-                                            <Calendar mode="single" selected={expiryDate} onSelect={handleManualExpiryChange} initialFocus disabled={(date) => date < new Date(new Date().setHours(0,0,0,0))} />
-                                            <div className="p-3 border-t">
-                                                <Label htmlFor="expiry-time" className="text-xs">Time</Label>
-                                                <Input id="expiry-time" type="time" value={expiryTime} onChange={handleTimeChange} />
-                                            </div>
-                                        </PopoverContent>
-                                    </Popover>
-                                </div>
-                            </div>
+                {/* Styling Tab */}
+                <TabsContent value="styling" className="pt-6 space-y-6 border p-4 rounded-b-md bg-muted/10">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                        <div className="space-y-2">
+                            <Label htmlFor="dot-color">Dots</Label>
+                            <Input id="dot-color" type="color" value={options.dotsOptions?.color || '#000000'} onChange={(e) => handleColorChange('dots', e.target.value)} className="h-10 p-1 w-full" />
                         </div>
-                     </TabsContent>
+                        <div className="space-y-2">
+                            <Label htmlFor="bg-color">Background</Label>
+                            <Input id="bg-color" type="color" value={options.backgroundOptions?.color || '#ffffff'} onChange={(e) => handleColorChange('background', e.target.value)} className="h-10 p-1 w-full" />
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="corner-square-color">Corners</Label>
+                            <Input id="corner-square-color" type="color" value={options.cornersSquareOptions?.color || '#000000'} onChange={(e) => handleColorChange('cornersSquare', e.target.value)} className="h-10 p-1 w-full" />
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="corner-dot-color">Corner Dots</Label>
+                            <Input id="corner-dot-color" type="color" value={options.cornersDotOptions?.color || '#000000'} onChange={(e) => handleColorChange('cornersDot', e.target.value)} className="h-10 p-1 w-full" />
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        <div className="space-y-2">
+                            <Label htmlFor="dot-style">Dot Style</Label>
+                            <Select onValueChange={(value: DotType) => handleDotStyleChange(value)} defaultValue={options.dotsOptions?.type}>
+                                <SelectTrigger id="dot-style"><SelectValue /></SelectTrigger>
+                                <SelectContent>{dotTypes.map(type => <SelectItem key={type} value={type}>{type}</SelectItem>)}</SelectContent>
+                            </Select>
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="corner-square-style">Corner Style</Label>
+                            <Select onValueChange={(value: CornerSquareType) => handleCornerStyleChange('cornersSquare', value)} defaultValue={options.cornersSquareOptions?.type ?? cornerSquareTypes[0]}>
+                                <SelectTrigger id="corner-square-style"><SelectValue /></SelectTrigger>
+                                <SelectContent>{cornerSquareTypes.map(type => <SelectItem key={type} value={type}>{type}</SelectItem>)}</SelectContent>
+                            </Select>
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="corner-dot-style">Corner Dot Style</Label>
+                            <Select onValueChange={(value: CornerDotType) => handleCornerStyleChange('cornersDot', value)} defaultValue={options.cornersDotOptions?.type ?? cornerDotTypes[0]}>
+                                <SelectTrigger id="corner-dot-style"><SelectValue /></SelectTrigger>
+                                <SelectContent>{cornerDotTypes.map(type => <SelectItem key={type} value={type}>{type}</SelectItem>)}</SelectContent>
+                            </Select>
+                        </div>
+                    </div>
+                     {/* QR Size Slider */}
+                    <div className="space-y-3 pt-4 border-t">
+                         <Label htmlFor="qr-size">QR Code Size ({options.width}px)</Label>
+                         <div className="flex items-center gap-2">
+                            <Slider id="qr-size" value={[options.width ?? 256]} min={100} max={1000} step={4} onValueChange={handleQrSizeChange} />
+                            <span className='text-sm w-14 text-right'>{options.width} px</span>
+                         </div>
+                         <p className="text-xs text-muted-foreground">Adjusts the preview size. Download size depends on format.</p>
+                    </div>
+                </TabsContent>
 
-                </Tabs>
+                 {/* Logo Tab */}
+                <TabsContent value="logo" className="pt-6 space-y-6 border p-4 rounded-b-md bg-muted/10">
+                    <div className="space-y-2">
+                        <Label htmlFor="logo-upload">Center Logo/Image</Label>
+                        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+                            <Button variant="outline" onClick={triggerLogoUpload} className="w-full sm:w-auto flex-grow justify-start text-left font-normal">
+                                <Upload className="mr-2 h-4 w-4" />
+                                {logoPreviewUrl ? "Change Image" : "Upload Image (PNG, JPG, SVG...)"}
+                            </Button>
+                            <Input ref={logoInputRef} id="logo-upload" type="file" accept="image/png, image/jpeg, image/gif, image/svg+xml, image/webp" onChange={handleLogoUpload} className="hidden" />
+                            {logoPreviewUrl && (
+                                <div className='flex items-center gap-2'>
+                                    <img src={logoPreviewUrl} alt="Logo Preview" className="h-10 w-10 rounded object-contain border bg-white" />
+                                    <Button variant="destructive" size="sm" onClick={removeLogo} aria-label="Remove logo">
+                                        <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                </div>
+                            )}
+                        </div>
+                         <p className="text-xs text-muted-foreground">Max file size: 2MB. Recommended: Square image.</p>
+                    </div>
+
+                    {logoPreviewUrl && (
+                        <>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div className="space-y-3">
+                                    <Label htmlFor="logo-size">Logo Size ({logoSize}%)</Label>
+                                    <div className="flex items-center gap-2">
+                                        <Slider id="logo-size" value={[logoSize]} min={10} max={50} step={1} onValueChange={handleLogoSizeChange} />
+                                        <span className='text-sm w-10 text-right'>{logoSize}%</span>
+                                    </div>
+                                    <p className="text-xs text-muted-foreground">Relative to QR code size. Default: 40%.</p>
+                                </div>
+                                <div className="space-y-3">
+                                    <Label htmlFor="logo-opacity">Logo Opacity ({logoOpacity}%)</Label>
+                                     <div className="flex items-center gap-2">
+                                        <Slider id="logo-opacity" value={[logoOpacity]} min={10} max={100} step={5} onValueChange={handleLogoOpacityChange} />
+                                         <span className='text-sm w-10 text-right'>{logoOpacity}%</span>
+                                     </div>
+                                    <p className="text-xs text-muted-foreground">Lower opacity might improve scanability.</p>
+                                </div>
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="logo-shape">Logo Shape</Label>
+                                <Select onValueChange={handleLogoShapeChange} defaultValue={logoShape}>
+                                    <SelectTrigger id="logo-shape" className="w-full sm:w-1/2"><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="square">Square</SelectItem>
+                                        <SelectItem value="circle">Circle</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                                <p className="text-xs text-muted-foreground">Applies a circular mask if selected.</p>
+                            </div>
+                            <div className="flex items-center space-x-2 pt-2">
+                                <Checkbox id="hide-dots" checked={options.imageOptions?.hideBackgroundDots} onCheckedChange={(checked) => setOptions(prev => ({ ...prev, imageOptions: {...(prev.imageOptions ?? defaultOptions.imageOptions), hideBackgroundDots: Boolean(checked)} }))}/>
+                                <Label htmlFor="hide-dots" className="text-sm font-medium leading-none">Hide Dots Behind Logo</Label>
+                                 <TooltipProvider>
+                                    <Tooltip>
+                                        <TooltipTrigger asChild><Info className="h-4 w-4 text-muted-foreground cursor-help" /></TooltipTrigger>
+                                        <TooltipContent><p>Removes QR dots behind the logo. May affect scanability.</p></TooltipContent>
+                                    </Tooltip>
+                                 </TooltipProvider>
+                            </div>
+                        </>
+                    )}
+                </TabsContent>
+
+                 {/* History Tab */}
+                <TabsContent value="history" className="pt-6 space-y-4 border p-4 rounded-b-md bg-muted/10">
+                    <div className="flex justify-between items-center">
+                        <Label className="text-base font-semibold">Generation History</Label>
+                         <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                                <Button variant="outline" size="sm" disabled={history.length === 0}>
+                                    <Trash2 className="mr-2 h-4 w-4" /> Clear History
+                                </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                                <AlertDialogHeader>
+                                    <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                        This will permanently delete your QR code generation history from this browser. This action cannot be undone.
+                                    </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                    <AlertDialogAction onClick={clearHistory}>Yes, Clear History</AlertDialogAction>
+                                </AlertDialogFooter>
+                            </AlertDialogContent>
+                        </AlertDialog>
+                    </div>
+                    <ScrollArea className="h-[300px] w-full border rounded-md">
+                        {history.length > 0 ? (
+                            history.map(renderHistoryItem)
+                        ) : (
+                            <div className="flex flex-col items-center justify-center h-full text-center p-4">
+                                <HistoryIcon className="h-10 w-10 text-muted-foreground/50 mb-3" />
+                                <p className="text-sm text-muted-foreground">No history yet.</p>
+                                <p className="text-xs text-muted-foreground">Generated QR codes will appear here.</p>
+                            </div>
+                        )}
+                    </ScrollArea>
+                    <p className="text-xs text-muted-foreground">History is saved locally in your browser.</p>
+                </TabsContent>
+
+             </Tabs>
+
+             {/* Moved Extras (Label, Expiry) outside tabs, but still within CardContent */}
+              <div className="space-y-4 pt-6 border-t">
+                 <h3 className="text-lg font-medium flex items-center gap-2"><Settings2 className="h-5 w-5"/> Extras</h3>
+                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                     {/* Label */}
+                     <div className="space-y-2">
+                         <Label htmlFor="qr-label">Label Text (Visual Only)</Label>
+                         <Input id="qr-label" type="text" value={qrLabel} onChange={(e) => setQrLabel(e.target.value)} placeholder="e.g., Scan Me!" maxLength={30} />
+                         <p className="text-xs text-muted-foreground">Appears below the preview, not in the QR code.</p>
+                     </div>
+
+                     {/* Expiry */}
+                     <div className='space-y-2'>
+                        <Label>Expiry Reminder (Visual Only)</Label>
+                        <p className="text-xs text-muted-foreground pb-1">Mark the QR code with an intended expiry. <strong className='text-foreground/80'>Actual expiration requires a backend service.</strong></p>
+                        <div className="flex flex-wrap gap-2 pb-2">
+                            <Button variant={!expiryDate ? "secondary" : "outline"} size="sm" onClick={() => handleSetExpiryPreset(null)}>No Expiry</Button>
+                            <Button variant={expiryDate && Math.abs(new Date().getTime() + 1*60*60*1000 - expiryDate.getTime()) < 1000 ? "secondary" : "outline"} size="sm" onClick={() => handleSetExpiryPreset('1h')}>1 Hour</Button>
+                            <Button variant={expiryDate && Math.abs(new Date().getTime() + 24*60*60*1000 - expiryDate.getTime()) < 1000 ? "secondary" : "outline"} size="sm" onClick={() => handleSetExpiryPreset('24h')}>24 Hours</Button>
+                            <Button variant={expiryDate && Math.abs(new Date().getTime() + 7*24*60*60*1000 - expiryDate.getTime()) < 1000 ? "secondary" : "outline"} size="sm" onClick={() => handleSetExpiryPreset('7d')}>7 Days</Button>
+                        </div>
+                        <Popover>
+                            <PopoverTrigger asChild>
+                                <Button variant="outline" className={cn("w-full justify-start text-left font-normal", !expiryDate && "text-muted-foreground")}>
+                                    <CalendarIcon className="mr-2 h-4 w-4" />
+                                    {expiryDate ? format(expiryDate, "PPP HH:mm") : <span>Pick manual expiry date/time</span>}
+                                </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-0">
+                                <Calendar mode="single" selected={expiryDate} onSelect={handleManualExpiryChange} initialFocus disabled={(date) => date < new Date(new Date().setHours(0,0,0,0))} />
+                                <div className="p-3 border-t">
+                                    <Label htmlFor="expiry-time" className="text-xs">Time</Label>
+                                    <Input id="expiry-time" type="time" value={expiryTime} onChange={handleTimeChange} />
+                                </div>
+                            </PopoverContent>
+                        </Popover>
+                    </div>
+                 </div>
              </div>
-
 
           </CardContent>
         </Card>
 
         {/* QR Preview Panel */}
-        <Card key={qrPreviewKey} className="lg:col-span-1 order-1 lg:order-2 sticky top-6 self-start animate-fade-in [animation-delay:0.2s]"> {/* Sticky preview, added key */}
+        <Card key={qrPreviewKey} className="lg:col-span-1 order-1 lg:order-2 sticky top-6 self-start animate-fade-in [animation-delay:0.2s]">
           <CardHeader>
-            <CardTitle>4. Preview & Download</CardTitle>
+            <CardTitle>3. Preview & Download</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col items-center justify-center space-y-4">
-             {/* QR Code Preview Area */}
-            <div className="border rounded-lg overflow-hidden shadow-md flex items-center justify-center bg-white p-2 relative" style={{ width: (options.width ?? 256) + 16, height: (options.height ?? 256) + 16 }}>
+            <div className="border rounded-lg overflow-hidden shadow-md flex items-center justify-center bg-white p-2 relative" style={{ width: (options.width ?? 256) + 16, height: (options.height ?? 256) + 16, maxWidth: '100%' }}>
                  {qrCodeSvgDataUrl ? (
-                    <img src={qrCodeSvgDataUrl} alt="Generated QR Code" style={{ width: options.width ?? 256, height: options.height ?? 256 }}/>
+                    <img src={qrCodeSvgDataUrl} alt="Generated QR Code" style={{ width: options.width ?? 256, height: options.height ?? 256, maxWidth: '100%', maxHeight: '100%' }}/>
                  ) : (
                     <div className="text-muted-foreground text-center p-4 flex flex-col items-center justify-center h-full absolute inset-0 bg-white/80 backdrop-blur-sm">
                          <QrCodeIcon className="h-12 w-12 mb-2 text-muted-foreground/50"/>
@@ -1160,7 +1254,6 @@ export function QrCodeGenerator() {
                     <Clock className="h-3 w-3"/> Marked to expire: {format(expiryDate, "PPp HH:mm")}
                 </p>
             )}
-             {/* File Type Selector */}
              <div className="w-full space-y-1 pt-4">
                 <Label htmlFor="file-type">Download Format</Label>
                 <Select onValueChange={(value: FileExtension) => setFileExtension(value)} defaultValue={fileExtension}>
