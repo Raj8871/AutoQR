@@ -13,7 +13,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Download, Image as ImageIcon, Link as LinkIcon, Phone, Mail, MessageSquare, MapPin, Calendar as CalendarIcon, User, Settings2, Palette, Clock, Wifi, Upload, Check, Trash2, Info, Eye, EyeOff, QrCode as QrCodeIcon, History as HistoryIcon, RefreshCcw, Star, Sparkles, Shapes } from 'lucide-react'; // Added HistoryIcon, RefreshCcw, Star, Sparkles, Shapes
+import { Download, Image as ImageIcon, Link as LinkIcon, Phone, Mail, MessageSquare, MapPin, Calendar as CalendarIcon, User, Settings2, Palette, Clock, Wifi, Upload, Check, Trash2, Info, Eye, EyeOff, QrCode as QrCodeIcon, History as HistoryIcon, RefreshCcw, Star, Sparkles, Shapes, CreditCard } from 'lucide-react'; // Added CreditCard for UPI
 import { format } from "date-fns";
 import { cn } from '@/lib/utils';
 import { toast } from '@/hooks/use-toast';
@@ -25,7 +25,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 // --- Types ---
 
 // Define allowed QR types
-type QrType = 'url' | 'text' | 'email' | 'phone' | 'whatsapp' | 'sms' | 'location' | 'event' | 'vcard' | 'wifi';
+type QrType = 'url' | 'text' | 'email' | 'phone' | 'whatsapp' | 'sms' | 'location' | 'event' | 'vcard' | 'wifi' | 'upi'; // Added 'upi'
 
 // QR type options
 const qrTypeOptions: { value: QrType; label: string; icon: React.ElementType; description: string }[] = [
@@ -39,6 +39,7 @@ const qrTypeOptions: { value: QrType; label: string; icon: React.ElementType; de
   { value: 'event', label: 'Calendar Event', icon: CalendarIcon, description: 'Add an event to the user\'s calendar (ICS format).' },
   { value: 'vcard', label: 'Contact Card (vCard)', icon: User, description: 'Share contact details easily.' },
   { value: 'wifi', label: 'Wi-Fi Network', icon: Wifi, description: 'Connect to a Wi-Fi network automatically.' },
+  { value: 'upi', label: 'UPI Payment', icon: CreditCard, description: 'Generate a QR for UPI payments with a specific amount.' }, // Added UPI option
 ];
 
 // Define style types
@@ -176,6 +177,27 @@ const formatWifi = (data: Record<string, any>): string => {
     return `WIFI:T:${encryption};S:${ssid};${encryption !== 'nopass' ? `P:${password};` : ''}H:${hidden};;`;
 };
 
+// Format UPI data
+const formatUpi = (data: Record<string, any>): string => {
+    const upiId = (data.upi_id || '').trim();
+    const amount = parseFloat(data.upi_amount || '0');
+    const note = (data.upi_note || '').trim();
+
+    // Basic validation
+    if (!upiId || !upiId.includes('@')) return ''; // Very basic UPI ID check
+    if (isNaN(amount) || amount <= 0) return ''; // Amount must be positive
+
+    let upiString = `upi://pay?pa=${encodeURIComponent(upiId)}`;
+    upiString += `&am=${amount.toFixed(2)}`; // Amount with 2 decimal places
+    upiString += `&cu=INR`; // Currency is INR
+    if (note) {
+        upiString += `&tn=${encodeURIComponent(note)}`; // Transaction Note
+    }
+    // Add Payee Name (pn) if needed/available: &pn=Payee%20Name
+
+    return upiString;
+};
+
 
 // Process image for shape/opacity
 const processImage = (
@@ -247,6 +269,9 @@ const generateQrDataString = (type: QrType, data: Record<string, any>): string =
           case 'wifi':
                targetData = formatWifi({ wifi_ssid: data.wifi_ssid, wifi_password: data.wifi_password, wifi_encryption: data.wifi_encryption || 'WPA/WPA2', wifi_hidden: data.wifi_hidden || false });
                break;
+          case 'upi': // Added UPI case
+               targetData = formatUpi({ upi_id: data.upi_id, upi_amount: data.upi_amount, upi_note: data.upi_note });
+               break;
           default: targetData = '';
         }
     } catch (error) {
@@ -285,7 +310,7 @@ export function QrCodeGenerator() {
 
   // Refs
   const logoInputRef = useRef<HTMLInputElement>(null);
-
+  const qrCodeRef = useRef<HTMLDivElement>(null); // Ref for the container div
 
   // --- History Management ---
 
@@ -343,80 +368,93 @@ export function QrCodeGenerator() {
 
   // --- QR Code Instance & Preview Update ---
   useEffect(() => {
-    const qrData = generateQrData();
-    const hasData = !!qrData;
-    setIsQrGenerated(hasData);
+      const qrData = generateQrData();
+      const hasData = !!qrData;
+      setIsQrGenerated(hasData);
 
-    let instance: QRCodeStyling | null = null;
+      // If the container ref is available, use it.
+      const container = qrCodeRef.current;
+      if (!container) return;
 
-    if (hasData) {
-        const qrOptions = { ...options, data: qrData };
-         try {
-            instance = new QRCodeStyling(qrOptions);
-            setQrCodeInstance(instance); // Store for download
+      let instance: QRCodeStyling | null = qrCodeInstance;
 
-             // Generate SVG preview
-            instance.getRawData('svg').then((blob) => {
-                if (blob) {
-                    const reader = new FileReader();
-                    reader.onload = () => {
-                        const svgDataUrl = reader.result as string;
-                        setQrCodeSvgDataUrl(svgDataUrl);
-                        setQrPreviewKey(Date.now()); // Update key
+      if (hasData) {
+          const qrOptions = { ...options, data: qrData };
+          try {
+              if (!instance) {
+                  // Create instance only if it doesn't exist
+                  instance = new QRCodeStyling(qrOptions);
+                  instance.append(container); // Append to the container div
+                  setQrCodeInstance(instance);
+              } else {
+                  // Update existing instance
+                  instance.update(qrOptions);
+              }
 
-                         // Save to history AFTER successful generation and preview update
-                        addToHistory({
-                            qrType: qrType,
-                            inputData: { ...inputData }, // Clone input data
-                            options: { // Store only the parts the user can customize directly
-                                dotsOptions: options.dotsOptions,
-                                backgroundOptions: options.backgroundOptions,
-                                cornersSquareOptions: options.cornersSquareOptions,
-                                cornersDotOptions: options.cornersDotOptions,
-                                image: options.image, // Store processed logo URL if any
-                                imageOptions: options.imageOptions,
-                                width: options.width,
-                                height: options.height,
-                            },
-                            label: qrLabel,
-                            previewSvgDataUrl: svgDataUrl,
-                        });
-                    };
-                    reader.readAsDataURL(blob);
-                } else {
-                    setQrCodeSvgDataUrl(null);
-                    toast({ variant: "destructive", title: "QR Preview Error", description: "Could not generate SVG preview." });
-                }
-            }).catch(error => {
-                console.error("Error getting SVG data:", error);
-                setQrCodeSvgDataUrl(null);
-                toast({ variant: "destructive", title: "QR Preview Error", description: "Could not generate SVG preview." });
-            });
+              // Generate SVG preview (optional, as the instance itself renders the preview)
+              instance.getRawData('svg').then((blob) => {
+                  if (blob) {
+                      const reader = new FileReader();
+                      reader.onload = () => {
+                          const svgDataUrl = reader.result as string;
+                          setQrCodeSvgDataUrl(svgDataUrl); // Keep for history and potential direct img use
 
-         } catch (error) {
-            console.error("Error creating QR code instance:", error);
-            setQrCodeSvgDataUrl(null);
-            setQrCodeInstance(null);
-            setIsQrGenerated(false);
-            toast({ variant: "destructive", title: "QR Generation Error", description: "Could not create the QR code. Check data or try again." });
-            setQrPreviewKey(Date.now());
-         }
+                           // Save to history AFTER successful generation and preview update
+                          addToHistory({
+                              qrType: qrType,
+                              inputData: { ...inputData }, // Clone input data
+                              options: { // Store only the parts the user can customize directly
+                                  dotsOptions: options.dotsOptions,
+                                  backgroundOptions: options.backgroundOptions,
+                                  cornersSquareOptions: options.cornersSquareOptions,
+                                  cornersDotOptions: options.cornersDotOptions,
+                                  image: options.image, // Store processed logo URL if any
+                                  imageOptions: options.imageOptions,
+                                  width: options.width,
+                                  height: options.height,
+                              },
+                              label: qrLabel,
+                              previewSvgDataUrl: svgDataUrl,
+                          });
+                      };
+                      reader.readAsDataURL(blob);
+                  } else {
+                       setQrCodeSvgDataUrl(null);
+                       toast({ variant: "destructive", title: "QR Preview Error", description: "Could not generate SVG preview." });
+                  }
+              }).catch(error => {
+                  console.error("Error getting SVG data:", error);
+                   setQrCodeSvgDataUrl(null);
+                   toast({ variant: "destructive", title: "QR Preview Error", description: "Could not generate SVG preview." });
+              });
 
-    } else {
-        // No data, clear everything
-        setQrCodeSvgDataUrl(null);
-        setQrCodeInstance(null);
-        setQrPreviewKey(Date.now());
-    }
+          } catch (error) {
+              console.error("Error creating/updating QR code instance:", error);
+              setQrCodeSvgDataUrl(null);
+              setQrCodeInstance(null);
+              setIsQrGenerated(false);
+              // Clear the container if error occurs
+               if (container) container.innerHTML = '';
+              toast({ variant: "destructive", title: "QR Generation Error", description: "Could not create the QR code. Check data or try again." });
+          }
 
-    // Cleanup function to clear canvas/SVG if component unmounts or options change drastically
-    return () => {
-        // If using a ref for a div, clear it here: qrCodeRef.current.innerHTML = '';
-        // The library seems to manage its own SVG element, relying on state re-render is okay here.
-    };
+      } else {
+          // No data, clear preview and instance
+          setQrCodeSvgDataUrl(null);
+          if (instance && container) {
+               // Optionally remove the existing QR code visually
+               // instance.off(container); // Not a method
+               container.innerHTML = '';
+               // Keep the instance for potential future use? Or nullify?
+               // setQrCodeInstance(null); // Let's nullify to ensure clean state
+          }
+           setQrCodeInstance(null);
+      }
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [options, qrType, inputData, qrLabel]); // Removed addToHistory dependency
+        // No explicit cleanup needed here for qrCodeInstance.append,
+        // as React will unmount the container div, or the update logic handles replacement.
+       // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [options, qrType, inputData, qrLabel]); // Added qrCodeRef.current to deps is problematic, rely on state update
 
 
   // --- Logo Handling ---
@@ -476,7 +514,21 @@ export function QrCodeGenerator() {
 
   // --- Input Handlers ---
   const handleInputChange = (key: string, value: any) => {
-    if ((key === 'latitude' || key === 'longitude') && value && isNaN(Number(value))) return;
+    // Validation for specific fields
+    if ((key === 'latitude' || key === 'longitude' || key === 'upi_amount') && value && isNaN(Number(value))) {
+         toast({ variant: "destructive", title: "Invalid Input", description: "Please enter a valid number." });
+         return;
+    }
+     if (key === 'upi_amount' && Number(value) < 0) {
+         toast({ variant: "destructive", title: "Invalid Amount", description: "Amount cannot be negative." });
+         return;
+     }
+    // Basic UPI ID format check (very simple)
+    if (key === 'upi_id' && value && !value.includes('@')) {
+         // Optional: Show a warning toast, but allow input
+         // toast({ title: "Potential Issue", description: "Ensure UPI ID format is correct (e.g., name@bank)." });
+     }
+
     setInputData(prev => ({ ...prev, [key]: value }));
   };
 
@@ -964,6 +1016,25 @@ export function QrCodeGenerator() {
                                      <p className="text-xs text-muted-foreground">* Network Name (SSID) is required. * Password required unless encryption is 'None'.</p>
                                 </div>
                             );
+                         case 'upi': // Added UPI inputs
+                            return (
+                                <div className="space-y-4">
+                                    <div className="space-y-2">
+                                        <Label htmlFor="upi-id">UPI ID *</Label>
+                                        <Input id="upi-id" type="text" value={inputData.upi_id || ''} onChange={(e) => handleInputChange('upi_id', e.target.value)} placeholder="yourname@bank" required />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label htmlFor="upi-amount">Amount (INR) *</Label>
+                                        <Input id="upi-amount" type="number" step="0.01" min="0.01" value={inputData.upi_amount || ''} onChange={(e) => handleInputChange('upi_amount', e.target.value)} placeholder="e.g., 500.00" required />
+                                        <p className="text-xs text-muted-foreground">Enter the amount in Indian Rupees (INR). Must be positive.</p>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label htmlFor="upi-note">Note/Message (Optional)</Label>
+                                        <Input id="upi-note" type="text" value={inputData.upi_note || ''} onChange={(e) => handleInputChange('upi_note', e.target.value)} placeholder="e.g., Payment for order #123" />
+                                    </div>
+                                    <p className="text-xs text-muted-foreground">* UPI ID and Amount are required.</p>
+                                </div>
+                            );
 
                         default:
                             return <p className="text-center text-muted-foreground">Select a QR code type to begin.</p>;
@@ -1259,15 +1330,14 @@ export function QrCodeGenerator() {
             <CardTitle>3. Preview & Download</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col items-center justify-center space-y-4">
-            <div className="border rounded-lg overflow-hidden shadow-md flex items-center justify-center bg-white p-2 relative" style={{ width: (options.width ?? 256) + 16, height: (options.height ?? 256) + 16, maxWidth: '100%' }}>
-                 {qrCodeSvgDataUrl ? (
-                    <img src={qrCodeSvgDataUrl} alt="Generated QR Code" style={{ width: options.width ?? 256, height: options.height ?? 256, maxWidth: '100%', maxHeight: '100%' }}/>
-                 ) : (
-                    <div className="text-muted-foreground text-center p-4 flex flex-col items-center justify-center h-full absolute inset-0 bg-white/80 backdrop-blur-sm">
+             <div ref={qrCodeRef} className="border rounded-lg overflow-hidden shadow-md flex items-center justify-center bg-white p-2 relative" style={{ width: (options.width ?? 256) + 16, height: (options.height ?? 256) + 16, maxWidth: '100%' }}>
+                {/* QR code will be appended here by the library */}
+                {!isQrGenerated && (
+                     <div className="text-muted-foreground text-center p-4 flex flex-col items-center justify-center h-full absolute inset-0 bg-white/80 backdrop-blur-sm">
                          <QrCodeIcon className="h-12 w-12 mb-2 text-muted-foreground/50"/>
                          <span>Enter data to generate QR code.</span>
                      </div>
-                  )}
+                 )}
             </div>
              {qrLabel && (
                 <p className="font-medium text-center mt-1">{qrLabel}</p>
@@ -1301,5 +1371,3 @@ export function QrCodeGenerator() {
     </div>
   );
 }
-
-    

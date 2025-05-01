@@ -1,12 +1,12 @@
 
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-import { LinkIcon, Palette, ImageIcon, Shapes, Download, History, Sparkles } from 'lucide-react';
+import { LinkIcon, Palette, ImageIcon, Shapes, Download, History, Sparkles, CreditCard } from 'lucide-react'; // Added CreditCard
 
 const features = [
   {
     icon: LinkIcon,
     title: 'Multiple QR Types',
-    description: 'Generate codes for URLs, text, email, phone, SMS, WhatsApp, Wi-Fi, vCards, events, and locations.',
+    description: 'Generate codes for URLs, text, email, phone, SMS, WhatsApp, Wi-Fi, vCards, events, locations, and UPI payments.', // Added UPI
   },
   {
     icon: Palette,
@@ -22,6 +22,11 @@ const features = [
     icon: ImageIcon,
     title: 'Logo Integration',
     description: 'Embed your logo in the center, adjust its size, shape (square/circle), and opacity.',
+  },
+   {
+    icon: CreditCard, // Added UPI Icon
+    title: 'UPI Payments',
+    description: 'Create QR codes for quick UPI payments with pre-filled amounts and notes.',
   },
   {
     icon: Download,

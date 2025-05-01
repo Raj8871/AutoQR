@@ -22,7 +22,7 @@ export function HeroSection() {
         "text-lg md:text-xl text-muted-foreground max-w-2xl mx-auto animate-fade-in",
         "[animation-delay:0.3s]" // Slightly more delay for paragraph
         )}>
-        Generate dynamic and customizable QR codes for URLs, contact info, events, WiFi, and more. Add logos, change colors, and choose styles with a live preview.
+        Generate dynamic and customizable QR codes for URLs, contact info, events, WiFi, UPI payments, and more. Add logos, change colors, and choose styles with a live preview.
       </p>
       {/* Use Link component wrapped in Button for navigation */}
       <div className={cn(
