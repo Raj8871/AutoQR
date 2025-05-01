@@ -5,19 +5,17 @@ import { QrCodeGenerator } from '@/components/QrCodeGenerator';
 
 export default function GeneratorPage() {
   return (
-    <>
+    <div className="flex flex-col min-h-screen"> {/* Ensure full height */}
       <Header />
-      <main
-        className="container flex flex-1 flex-col items-center justify-start py-8 md:py-12 animate-fade-in"
-      >
-        {/* QR Code Generator Section */}
-        <section id="qr-generator-section" className="w-full">
-             {/* Title moved inside the QrCodeGenerator component for better context */}
-             {/* <h2 className="text-3xl font-semibold text-center mb-8">Create Your QR Code</h2> */}
+      {/* Main content area with responsive padding */}
+      <main className="container flex-1 flex flex-col items-center justify-start py-8 md:py-12 px-4 animate-fade-in">
+        {/* QR Code Generator Section takes full width */}
+        <section id="qr-generator-section" className="w-full max-w-6xl"> {/* Limit max width */}
+             {/* Title moved inside the QrCodeGenerator component */}
              <QrCodeGenerator />
         </section>
       </main>
       <Footer />
-    </>
+    </div>
   );
 }

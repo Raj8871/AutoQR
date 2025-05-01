@@ -1,10 +1,18 @@
+'use client'; // Mark as client component
+
 import Link from 'next/link';
 import { Instagram, Twitter, Facebook } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import React, { useState, useEffect } from 'react'; // Import useState and useEffect
 
 export function Footer() {
-  const currentYear = new Date().getFullYear();
+  const [currentYear, setCurrentYear] = useState<number | null>(null);
+
+  useEffect(() => {
+    // Set the year only on the client side after hydration
+    setCurrentYear(new Date().getFullYear());
+  }, []); // Empty dependency array ensures this runs once on mount
 
   return (
     <footer className={cn(
@@ -30,7 +38,10 @@ export function Footer() {
           </Button>
         </div>
         <div className="text-center text-sm text-foreground/60">
-          <p>© {currentYear} LinkSpark. All Rights Reserved.</p>
+          {/* Display year only after it's set on the client */}
+          {currentYear !== null && (
+              <p>© {currentYear} LinkSpark. All Rights Reserved.</p>
+          )}
           <div className="mt-1 flex justify-center gap-4">
             <Link href="/privacy" className="hover:text-foreground/80 transition-colors">
               Privacy Policy
@@ -45,8 +56,8 @@ export function Footer() {
   );
 }
 
-// Placeholder pages for Privacy and Terms
-// You would create actual pages at src/app/privacy/page.tsx and src/app/terms/page.tsx
+// These placeholder components likely don't need changes as they are separate
+// and not directly related to the footer's hydration issue.
 export function PrivacyPage() {
   return <div className="container py-10"><h1>Privacy Policy</h1><p>Details about privacy...</p></div>;
 }
