@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
@@ -303,11 +304,28 @@ export function QrCodeGenerator() {
       };
 
     setHistory(prevHistory => {
-      const newHistory = [fullItem, ...prevHistory].slice(0, MAX_HISTORY_ITEMS);
-      setLocalStorageItem(LOCAL_STORAGE_KEY, newHistory);
-      return newHistory;
+      // Avoid adding duplicates (simple check based on data and type, could be more robust)
+      const existingIndex = prevHistory.findIndex(item =>
+          item.qrType === fullItem.qrType && JSON.stringify(item.inputData) === JSON.stringify(fullItem.inputData)
+      );
+      if (existingIndex > -1) {
+          // Move existing item to the top instead of adding a duplicate
+          const updatedHistory = [...prevHistory];
+          const [existingItem] = updatedHistory.splice(existingIndex, 1);
+          existingItem.timestamp = fullItem.timestamp; // Update timestamp
+          existingItem.previewSvgDataUrl = fullItem.previewSvgDataUrl; // Update preview
+          const finalHistory = [existingItem, ...updatedHistory].slice(0, MAX_HISTORY_ITEMS);
+           setLocalStorageItem(LOCAL_STORAGE_KEY, finalHistory);
+          return finalHistory;
+      } else {
+          // Add new item
+          const newHistory = [fullItem, ...prevHistory].slice(0, MAX_HISTORY_ITEMS);
+          setLocalStorageItem(LOCAL_STORAGE_KEY, newHistory);
+          return newHistory;
+      }
     });
   }, []);
+
 
    // Clear history
   const clearHistory = useCallback(() => {
@@ -398,7 +416,24 @@ export function QrCodeGenerator() {
     };
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [options, qrType, inputData, qrLabel, addToHistory]); // Added addToHistory and qrLabel
+  }, [options, qrType, inputData, qrLabel]); // Removed addToHistory dependency
+
+
+  // --- Logo Handling ---
+  // Moved removeLogo definition before loadFromHistory
+  const removeLogo = useCallback(() => {
+     setOriginalLogoUrl(null);
+     setLogoPreviewUrl(null);
+     setOptions(prev => ({
+         ...prev,
+         image: '',
+         imageOptions: { ...(prev.imageOptions ?? defaultOptions.imageOptions), margin: 5, imageSize: 0.4 },
+     }));
+     setLogoSize(40);
+     setLogoShape('square');
+     setLogoOpacity(100);
+     if (logoInputRef.current) logoInputRef.current.value = '';
+  }, []);
 
 
    // Reload settings from a history item
@@ -436,7 +471,7 @@ export function QrCodeGenerator() {
 
     setQrPreviewKey(Date.now()); // Force preview update
     toast({ title: "Loaded from History", description: `Restored QR code configuration from ${format(item.timestamp, 'PP pp')}.` });
-  }, [removeLogo]);
+  }, [removeLogo]); // Now removeLogo is defined before this useCallback
 
 
   // --- Input Handlers ---
@@ -600,19 +635,7 @@ export function QrCodeGenerator() {
 
  const triggerLogoUpload = () => logoInputRef.current?.click();
 
- const removeLogo = useCallback(() => {
-     setOriginalLogoUrl(null);
-     setLogoPreviewUrl(null);
-     setOptions(prev => ({
-         ...prev,
-         image: '',
-         imageOptions: { ...(prev.imageOptions ?? defaultOptions.imageOptions), margin: 5, imageSize: 0.4 },
-     }));
-     setLogoSize(40);
-     setLogoShape('square');
-     setLogoOpacity(100);
-     if (logoInputRef.current) logoInputRef.current.value = '';
- }, []);
+
 
 
  // --- Expiry Handling ---
@@ -1278,3 +1301,5 @@ export function QrCodeGenerator() {
     </div>
   );
 }
+
+    
