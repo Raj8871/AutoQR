@@ -3,8 +3,9 @@
 import { Header } from '@/components/layout/Header';
 import { Footer } from '@/components/layout/Footer';
 import { HeroSection } from '@/components/HeroSection'; // Import the hero component
-// import { FeaturesSection } from '@/components/FeaturesSection'; // Removed Features
-// import { HowItWorksSection } from '@/components/HowItWorksSection'; // Removed How It Works
+import { FeaturesSection } from '@/components/FeaturesSection'; // Import Features
+import { HowItWorksSection } from '@/components/HowItWorksSection'; // Import How It Works
+import { WhyChooseUsSection } from '@/components/WhyChooseUsSection'; // Import Why Choose Us
 import { Separator } from '@/components/ui/separator'; // Import Separator for visual breaks
 
 // This remains a Server Component
@@ -18,16 +19,20 @@ export default function Home() {
         {/* Hero Section */}
         <HeroSection />
 
-        {/* Removed Separator and other sections */}
-        {/*
         <Separator className="my-12 md:my-16" />
 
+        {/* Features Section */}
         <FeaturesSection />
 
         <Separator className="my-12 md:my-16" />
 
+        {/* How It Works Section */}
         <HowItWorksSection />
-        */}
+
+         <Separator className="my-12 md:my-16" />
+
+        {/* Why Choose Us Section */}
+        <WhyChooseUsSection />
 
       </main>
       <Footer />
