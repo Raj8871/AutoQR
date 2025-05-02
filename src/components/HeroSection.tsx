@@ -1,3 +1,4 @@
+
 // src/components/HeroSection.tsx
 'use client'; // Mark as Client Component
 
@@ -42,3 +43,4 @@ export function HeroSection() {
     </section>
   );
 }
+
