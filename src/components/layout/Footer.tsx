@@ -1,10 +1,16 @@
 'use client'; // Mark as client component
 
 import Link from 'next/link';
-import { Instagram, Twitter, Facebook } from 'lucide-react';
+import { Instagram, Twitter, Facebook, Mail } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import React, { useState, useEffect } from 'react'; // Import useState and useEffect
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 export function Footer() {
   const [currentYear, setCurrentYear] = useState<number | null>(null);
@@ -16,26 +22,62 @@ export function Footer() {
 
   return (
     <footer className={cn(
-        "mt-auto border-t border-border/40 bg-background/95 py-6",
+        "mt-auto border-t border-border/40 bg-background/95 py-6 animate-fade-in",
         "backdrop-blur supports-[backdrop-filter]:bg-background/60" // Subtle blur matching header
         )}>
       <div className="container flex flex-col items-center justify-between gap-4 sm:flex-row">
         <div className="flex gap-4">
-          <Button variant="ghost" size="icon" asChild>
-            <a href="https://instagram.com" target="_blank" rel="noopener noreferrer" aria-label="Instagram">
-              <Instagram className="h-5 w-5 text-foreground/60 hover:text-foreground/80 transition-colors" />
-            </a>
-          </Button>
-          <Button variant="ghost" size="icon" asChild>
-            <a href="https://twitter.com" target="_blank" rel="noopener noreferrer" aria-label="Twitter">
-              <Twitter className="h-5 w-5 text-foreground/60 hover:text-foreground/80 transition-colors" />
-            </a>
-          </Button>
-          <Button variant="ghost" size="icon" asChild>
-            <a href="https://facebook.com" target="_blank" rel="noopener noreferrer" aria-label="Facebook">
-              <Facebook className="h-5 w-5 text-foreground/60 hover:text-foreground/80 transition-colors" />
-            </a>
-          </Button>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon" asChild>
+                  <a href="https://instagram.com" target="_blank" rel="noopener noreferrer" aria-label="Instagram">
+                    <Instagram className="h-5 w-5 text-foreground/60 hover:text-foreground/80 transition-colors" />
+                  </a>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Instagram</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon" asChild>
+                  <a href="https://twitter.com" target="_blank" rel="noopener noreferrer" aria-label="Twitter">
+                    <Twitter className="h-5 w-5 text-foreground/60 hover:text-foreground/80 transition-colors" />
+                  </a>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Twitter</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon" asChild>
+                  <a href="https://facebook.com" target="_blank" rel="noopener noreferrer" aria-label="Facebook">
+                    <Facebook className="h-5 w-5 text-foreground/60 hover:text-foreground/80 transition-colors" />
+                  </a>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Facebook</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon" asChild>
+                  <Link href="/contact" aria-label="Contact Us">
+                    <Mail className="h-5 w-5 text-foreground/60 hover:text-foreground/80 transition-colors" />
+                  </Link>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Contact Us</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         </div>
         <div className="text-center text-sm text-foreground/60">
           {/* Display year only after it's set on the client */}
@@ -48,6 +90,9 @@ export function Footer() {
             </Link>
             <Link href="/terms" className="hover:text-foreground/80 transition-colors">
               Terms of Service
+            </Link>
+             <Link href="/contact" className="hover:text-foreground/80 transition-colors">
+              Contact Us
             </Link>
           </div>
         </div>
