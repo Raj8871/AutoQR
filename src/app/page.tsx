@@ -6,7 +6,7 @@ import { FeaturesSection } from '@/components/FeaturesSection'; // Import Featur
 import { HowItWorksSection } from '@/components/HowItWorksSection'; // Import How It Works
 import { WhyChooseUsSection } from '@/components/WhyChooseUsSection'; // Import Why Choose Us
 import { Separator } from '@/components/ui/separator'; // Import Separator for visual breaks
-import { QrTypesShowcase } from '@/components/QrTypesShowcase'; // Import the new showcase component
+// Removed import for QrTypesShowcase
 
 // This remains a Server Component
 export default function Home() {
@@ -21,10 +21,7 @@ export default function Home() {
 
         <Separator className="my-12 md:my-16" />
 
-        {/* QR Types Showcase Section */}
-        <QrTypesShowcase />
-
-        <Separator className="my-12 md:my-16" />
+        {/* Removed QR Types Showcase Section */}
 
         {/* Features Section */}
         <FeaturesSection />
