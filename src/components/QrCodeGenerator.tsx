@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
@@ -14,10 +13,10 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Calendar } from "@/components/ui/calendar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"; // Import Accordion
-import { Download, Image as ImageIcon, Link as LinkIcon, Phone, Mail, MessageSquare, MapPin, Calendar as CalendarIcon, User, Settings2, Palette, Clock, Wifi, Upload, Check, Trash2, Info, Eye, EyeOff, QrCode as QrCodeIcon, History as HistoryIcon, RefreshCcw, Star, Sparkles, Shapes, CreditCard, Copy, Pencil, StarIcon, Share2, X, Mic, Lock } from 'lucide-react'; // Added Mic, Lock
+import { Download, Image as ImageIcon, Link as LinkIcon, Phone, Mail, MessageSquare, MapPin, Calendar as CalendarIcon, Settings2, Palette, Clock, Wifi, Upload, Check, Trash2, Info, Eye, EyeOff, QrCode as QrCodeIcon, History as HistoryIcon, RefreshCcw, Star, Sparkles, Shapes, CreditCard, Copy, Pencil, StarIcon, Share2, X } from 'lucide-react'; // Removed Mic, Lock, User
 import { format } from "date-fns";
 import { cn } from '@/lib/utils';
-import { toast } from '@/hooks/use-toast';
+import { useToast } from '@/hooks/use-toast';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -29,7 +28,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 // --- Types ---
 
 // Define allowed QR types
-type QrType = 'url' | 'text' | 'email' | 'phone' | 'whatsapp' | 'sms' | 'location' | 'event' | 'vcard' | 'wifi' | 'upi' | 'voice' | 'password'; // Added 'voice', 'password'
+type QrType = 'url' | 'text' | 'email' | 'phone' | 'whatsapp' | 'sms' | 'location' | 'event' | 'wifi' | 'upi'; // Removed 'vcard', 'voice', 'password'
 
 // QR type options
 const qrTypeOptions: { value: QrType; label: string; icon: React.ElementType; description: string }[] = [
@@ -41,11 +40,11 @@ const qrTypeOptions: { value: QrType; label: string; icon: React.ElementType; de
   { value: 'sms', label: 'SMS Message', icon: MessageSquare, description: 'Open the SMS app with a pre-filled number and message.' },
   { value: 'location', label: 'Google Maps Location', icon: MapPin, description: 'Open Google Maps at the specified coordinates.' },
   { value: 'event', label: 'Calendar Event', icon: CalendarIcon, description: 'Add an event to the user\'s calendar (ICS format).' },
-  { value: 'vcard', label: 'Contact Card (vCard)', icon: User, description: 'Share contact details easily.' },
+  // Removed vCard
   { value: 'wifi', label: 'Wi-Fi Network', icon: Wifi, description: 'Connect to a Wi-Fi network automatically.' },
   { value: 'upi', label: 'UPI Payment', icon: CreditCard, description: 'Generate a QR for UPI payments with a specific amount and note.' },
-  { value: 'voice', label: 'Voice Message', icon: Mic, description: 'Record or upload an audio message to share.' }, // Added Voice
-  { value: 'password', label: 'Password Protected Content', icon: Lock, description: 'Secure content (URL/Text) behind a password.' }, // Added Password
+  // Removed Voice
+  // Removed Password
 ];
 
 // Define style types
@@ -135,23 +134,7 @@ const setLocalStorageItem = <T>(key: string, value: T): void => {
 };
 
 
-// Format vCard data
-const formatVCard = (data: Record<string, string>): string => {
-  let vCardString = 'BEGIN:VCARD\nVERSION:3.0\n';
-  if (data.firstName || data.lastName) vCardString += `N:${data.lastName || ''};${data.firstName || ''}\n`;
-  if (data.firstName || data.lastName) vCardString += `FN:${data.firstName || ''} ${data.lastName || ''}\n`;
-  if (data.organization) vCardString += `ORG:${data.organization}\n`;
-  if (data.title) vCardString += `TITLE:${data.title}\n`;
-  if (data.phone) vCardString += `TEL;TYPE=WORK,VOICE:${data.phone}\n`;
-  if (data.mobile) vCardString += `TEL;TYPE=CELL,VOICE:${data.mobile}\n`;
-  if (data.email) vCardString += `EMAIL:${data.email}\n`;
-  if (data.website) vCardString += `URL:${data.website}\n`;
-  if (data.address) vCardString += `ADR;TYPE=WORK:;;${data.address}\n`; // Basic address format
-  vCardString += 'END:VCARD';
-  // Basic validation: Require at least first name, last name, or organization/phone/email
-  if (!data.firstName && !data.lastName && !data.organization && !data.phone && !data.mobile && !data.email) return '';
-  return vCardString;
-};
+// Removed formatVCard function
 
 // Format ICS data
 const formatICS = (data: Record<string, any>): string => {
@@ -251,37 +234,7 @@ const formatUpi = (data: Record<string, any>): string => {
 };
 
 
-// --- Password Protection (Basic Simulation) ---
-// In a real app, use server-side encryption/decryption or a secure service
-const encryptContent = (content: string, pass: string): string => {
-  // VERY basic XOR simulation - NOT SECURE for production
-  let encrypted = '';
-  for (let i = 0; i < content.length; i++) {
-    encrypted += String.fromCharCode(content.charCodeAt(i) ^ pass.charCodeAt(i % pass.length));
-  }
-  return btoa(encrypted); // Base64 encode for URL safety
-};
-
-const formatPasswordProtectedData = (data: Record<string, any>): string => {
-    const content = data.password_content || '';
-    const password = data.password_pass || '';
-    const hint = data.password_hint || ''; // Get hint
-
-    if (!content || !password) {
-        toast({ variant: "destructive", title: "Missing Info", description: "Content and password are required." });
-        return '';
-    }
-
-    const encrypted = encryptContent(content, password);
-    // Simple URL structure for the intermediate page (simulated)
-    // In a real app, this URL would point to your server endpoint
-    let intermediateUrl = `/protected?data=${encodeURIComponent(encrypted)}`;
-    if (hint) {
-        intermediateUrl += `&hint=${encodeURIComponent(hint)}`; // Append hint
-    }
-    return intermediateUrl;
-}
-
+// --- Password Protection (Basic Simulation) --- Removed
 
 // Process image for shape/opacity
 const processImage = (
@@ -418,12 +371,7 @@ const generateQrDataString = (type: QrType, data: Record<string, any>): string =
                  // console.warn("ICS data generation failed.");
               }
               break;
-          case 'vcard':
-               targetData = formatVCard({ firstName: data.vcard_firstName, lastName: data.vcard_lastName, organization: data.vcard_organization, title: data.vcard_title, phone: data.vcard_phone, mobile: data.vcard_mobile, email: data.vcard_email, website: data.vcard_website, address: data.vcard_address });
-                if (!targetData && (data.vcard_firstName || data.vcard_lastName || data.vcard_organization || data.vcard_phone || data.vcard_email)) {
-                     toast({ variant: "destructive", title: "Incomplete vCard", description: "Please provide at least a name, organization, phone, or email." });
-                 }
-               break;
+          // Removed vCard case
           case 'wifi':
                targetData = formatWifi({ wifi_ssid: data.wifi_ssid, wifi_password: data.wifi_password, wifi_encryption: data.wifi_encryption || 'WPA/WPA2', wifi_hidden: data.wifi_hidden || false });
                 // formatWifi handles its own validation
@@ -432,19 +380,8 @@ const generateQrDataString = (type: QrType, data: Record<string, any>): string =
                targetData = formatUpi({ upi_id: data.upi_id, upi_name: data.upi_name, upi_amount: data.upi_amount, upi_note: data.upi_note });
                 // formatUpi handles its own validation
                break;
-          case 'voice': // Added Voice case
-              // For now, just link to the data URL if available
-              if (data.voice_data_url) {
-                  targetData = data.voice_data_url;
-              } else {
-                  toast({ variant: "destructive", title: "No Voice Message", description: "Please record or upload a voice message first." });
-                  return '';
-              }
-              break;
-          case 'password': // Added Password case
-              targetData = formatPasswordProtectedData({ password_content: data.password_content, password_pass: data.password_pass, password_hint: data.password_hint });
-              // formatPasswordProtectedData handles its own validation
-              break;
+          // Removed Voice case
+          // Removed Password case
           default: targetData = '';
         }
     } catch (error) {
@@ -500,16 +437,9 @@ export function QrCodeGenerator() {
   const [expiryDate, setExpiryDate] = useState<Date | undefined>(undefined);
   const [expiryTime, setExpiryTime] = useState<string>("00:00"); // Default time
   const [wifiPasswordVisible, setWifiPasswordVisible] = useState<boolean>(false);
-  const [passwordVisible, setPasswordVisible] = useState<boolean>(false); // For password protected content
+  // Removed passwordVisible state
 
-   // Voice Message State
-   const [isRecording, setIsRecording] = useState(false);
-   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
-   const [audioDataUrl, setAudioDataUrl] = useState<string | null>(null);
-   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-   const audioChunksRef = useRef<Blob[]>([]);
-   const audioRef = useRef<HTMLAudioElement>(null); // Ref for audio playback
-
+   // Removed Voice Message State
 
    // History State
   const [history, setHistory] = useState<HistoryItem[]>([]);
@@ -524,7 +454,7 @@ export function QrCodeGenerator() {
   // Refs
   const logoInputRef = useRef<HTMLInputElement>(null);
   const qrCodeRef = useRef<HTMLDivElement>(null); // Ref for the container div
-  const voiceFileInputRef = useRef<HTMLInputElement>(null); // Ref for voice file input
+  // Removed voiceFileInputRef and audioRef
 
    // --- History Management ---
 
@@ -824,11 +754,7 @@ export function QrCodeGenerator() {
 
                             // Save to history AFTER successful generation and preview update
                              const currentInputData = { ...inputData };
-                            // Clean up large data before saving to history (e.g., voice data URL)
-                            if (currentInputData.voice_data_url && currentInputData.voice_data_url.length > 1000) {
-                                currentInputData.voice_data_url_preview = currentInputData.voice_data_url.substring(0, 100) + '...[truncated]';
-                                delete currentInputData.voice_data_url; // Remove full data URL from history item
-                            }
+                            // Removed voice data URL cleanup
 
                             addToHistory({
                                 qrType: qrType,
@@ -883,14 +809,12 @@ export function QrCodeGenerator() {
            // The container clearing is now handled at the beginning of updateQrCode
        };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [options, qrType, inputData, qrLabel]); // Removed qrCodeInstance and addToHistory from deps
+  }, [options, qrType, inputData, qrLabel, addToHistory]); // Added addToHistory to dependency array
 
 
    // Reload settings from a history item
   const loadFromHistory = useCallback((item: HistoryItem) => {
     const dataToLoad = { ...item.inputData };
-     // Restore full voice data URL if it was truncated (requires separate storage or placeholder logic)
-     // For now, we just load the potentially truncated data
 
     setQrType(item.qrType);
     setInputData(dataToLoad); // Use restored data
@@ -906,20 +830,7 @@ export function QrCodeGenerator() {
     setOptions(loadedOptions); // This triggers the main useEffect
     setQrLabel(item.label);
 
-    // Restore audio state if loading a voice QR
-     if (item.qrType === 'voice' && item.inputData.voice_data_url_preview) {
-        // Cannot restore full audio from truncated preview in history
-        // Clear current audio state
-        setAudioBlob(null);
-        setAudioDataUrl(null);
-        setInputData(prev => ({ ...prev, voice_data_url: null })); // Clear in current inputData too
-        toast({ variant: "default", title: "Voice Message Cleared", description: "Voice message data is not stored in history. Please record/upload again." });
-    } else if (item.qrType !== 'voice') {
-        // Clear audio state if loading a non-voice type
-        setAudioBlob(null);
-        setAudioDataUrl(null);
-    }
-
+    // Removed audio state restoration
 
     // Attempt to reconstruct logo state from stored options
     if (item.options?.image) {
@@ -1237,80 +1148,7 @@ export function QrCodeGenerator() {
   }, [qrCodeInstance, options, fileExtension, qrType, generateQrData, isQrGenerated, expiryDate, qrLabel]);
 
 
-    // --- Voice Message Recording ---
-    const startRecording = async () => {
-        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                mediaRecorderRef.current = new MediaRecorder(stream);
-                audioChunksRef.current = []; // Clear previous chunks
-
-                mediaRecorderRef.current.ondataavailable = (event) => {
-                    audioChunksRef.current.push(event.data);
-                };
-
-                mediaRecorderRef.current.onstop = () => {
-                    const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/wav' }); // Use WAV for better compatibility
-                    setAudioBlob(audioBlob);
-                    const url = URL.createObjectURL(audioBlob);
-                    setAudioDataUrl(url);
-                    setInputData(prev => ({ ...prev, voice_data_url: url })); // Set data URL for QR
-                    // Stop the tracks to release the microphone
-                     stream.getTracks().forEach(track => track.stop());
-                };
-
-                mediaRecorderRef.current.start();
-                setIsRecording(true);
-                toast({ title: "Recording Started", description: "Click stop when finished." });
-            } catch (err) {
-                console.error("Error accessing microphone:", err);
-                toast({ variant: "destructive", title: "Microphone Error", description: "Could not access microphone. Please check permissions." });
-            }
-        } else {
-             toast({ variant: "destructive", title: "Not Supported", description: "Audio recording is not supported by your browser." });
-        }
-    };
-
-    const stopRecording = () => {
-        if (mediaRecorderRef.current && isRecording) {
-            mediaRecorderRef.current.stop();
-            setIsRecording(false);
-            toast({ title: "Recording Stopped" });
-        }
-    };
-
-     const handleVoiceFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-        const file = event.target.files?.[0];
-        if (file) {
-             if (!['audio/mpeg', 'audio/wav', 'audio/ogg'].includes(file.type)) {
-                toast({ variant: "destructive", title: "Invalid File Type", description: "Please upload MP3, WAV, or OGG audio." });
-                return;
-             }
-             if (file.size > 5 * 1024 * 1024) { // 5MB limit
-                toast({ variant: "destructive", title: "File Too Large", description: "Audio file should be less than 5MB." });
-                return;
-            }
-            const reader = new FileReader();
-            reader.onloadend = () => {
-                 const dataUrl = reader.result as string;
-                 setAudioDataUrl(dataUrl); // For playback preview
-                 setInputData(prev => ({ ...prev, voice_data_url: dataUrl })); // Use data URL directly for QR (can get very long!)
-                 setAudioBlob(file); // Store blob if needed later (e.g., for actual upload)
-                  toast({ title: "Audio File Loaded" });
-            }
-             reader.onerror = () => toast({ variant: "destructive", title: "File Read Error"});
-             reader.readAsDataURL(file);
-        }
-     };
-
-     const removeAudio = () => {
-        setAudioBlob(null);
-        setAudioDataUrl(null);
-        setInputData(prev => ({ ...prev, voice_data_url: null }));
-         if (voiceFileInputRef.current) voiceFileInputRef.current.value = '';
-         if (audioRef.current) audioRef.current.src = ''; // Clear audio player source
-        toast({ title: "Audio Removed" });
-     }
+    // Removed Voice Message Recording logic
 
      // --- Filtered and Sorted History ---
     const filteredHistory = history
@@ -1470,61 +1308,7 @@ export function QrCodeGenerator() {
                                     <p className="text-xs text-muted-foreground">* Event Title and Start Date/Time are required.</p>
                                 </div>
                             );
-                        case 'vcard':
-                            return (
-                                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                                    {/* Required fields grouped */}
-                                    <fieldset className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4 border p-4 rounded-md">
-                                         <legend className="text-sm font-medium px-1">Name *</legend>
-                                        <div className="space-y-2">
-                                            <Label htmlFor="vcard-firstName">First Name *</Label>
-                                            <Input id="vcard-firstName" value={inputData.vcard_firstName || ''} onChange={(e) => handleInputChange('vcard_firstName', e.target.value)} placeholder="John" required/>
-                                        </div>
-                                        <div className="space-y-2">
-                                            <Label htmlFor="vcard-lastName">Last Name *</Label>
-                                            <Input id="vcard-lastName" value={inputData.vcard_lastName || ''} onChange={(e) => handleInputChange('vcard_lastName', e.target.value)} placeholder="Doe" required/>
-                                        </div>
-                                         <p className="text-xs text-muted-foreground md:col-span-2">* At least First or Last Name is required.</p>
-                                    </fieldset>
-
-                                    {/* Optional fields grouped */}
-                                     <fieldset className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4 border p-4 rounded-md">
-                                         <legend className="text-sm font-medium px-1">Contact Info (Optional)</legend>
-                                        <div className="space-y-2">
-                                            <Label htmlFor="vcard-phone">Work Phone</Label>
-                                            <Input id="vcard-phone" type="tel" value={inputData.vcard_phone || ''} onChange={(e) => handleInputChange('vcard_phone', e.target.value)} placeholder="+1-555-1234" />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <Label htmlFor="vcard-mobile">Mobile Phone</Label>
-                                            <Input id="vcard-mobile" type="tel" value={inputData.vcard_mobile || ''} onChange={(e) => handleInputChange('vcard_mobile', e.target.value)} placeholder="+1-555-5678" />
-                                        </div>
-                                         <div className="space-y-2 md:col-span-2">
-                                            <Label htmlFor="vcard-email">Email</Label>
-                                            <Input id="vcard-email" type="email" value={inputData.vcard_email || ''} onChange={(e) => handleInputChange('vcard_email', e.target.value)} placeholder="john.doe@example.com" />
-                                        </div>
-                                    </fieldset>
-
-                                    <fieldset className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4 border p-4 rounded-md">
-                                         <legend className="text-sm font-medium px-1">Work Details (Optional)</legend>
-                                        <div className="space-y-2">
-                                            <Label htmlFor="vcard-organization">Organization</Label>
-                                            <Input id="vcard-organization" value={inputData.vcard_organization || ''} onChange={(e) => handleInputChange('vcard_organization', e.target.value)} placeholder="Acme Inc." />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <Label htmlFor="vcard-title">Job Title</Label>
-                                            <Input id="vcard-title" value={inputData.vcard_title || ''} onChange={(e) => handleInputChange('vcard_title', e.target.value)} placeholder="Software Engineer" />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <Label htmlFor="vcard-website">Website</Label>
-                                            <Input id="vcard-website" type="url" value={inputData.vcard_website || ''} onChange={(e) => handleInputChange('vcard_website', e.target.value)} placeholder="https://johndoe.com" />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <Label htmlFor="vcard-address">Address</Label>
-                                            <Textarea id="vcard-address" value={inputData.vcard_address || ''} onChange={(e) => handleInputChange('vcard_address', e.target.value)} placeholder="123 Main St, Anytown, USA" rows={2} />
-                                        </div>
-                                    </fieldset>
-                                </div>
-                            );
+                        // Removed vCard inputs
                         case 'wifi':
                             return (
                                 <div className="space-y-4">
@@ -1616,95 +1400,8 @@ export function QrCodeGenerator() {
                                     <p className="text-xs text-muted-foreground">* UPI ID and Amount are required.</p>
                                 </div>
                             );
-                        case 'voice': // Voice Message Inputs
-                            return (
-                                <div className="space-y-4">
-                                    <Label>Voice Message</Label>
-                                    <div className="flex flex-col sm:flex-row gap-2">
-                                        <Button
-                                            variant={isRecording ? "destructive" : "outline"}
-                                            onClick={isRecording ? stopRecording : startRecording}
-                                            className="w-full sm:w-auto"
-                                        >
-                                            <Mic className="mr-2 h-4 w-4" />
-                                            {isRecording ? 'Stop Recording' : 'Start Recording'}
-                                        </Button>
-                                        <Button variant="outline" onClick={() => voiceFileInputRef.current?.click()} className="w-full sm:w-auto">
-                                            <Upload className="mr-2 h-4 w-4"/> Upload File (MP3, WAV, OGG)
-                                        </Button>
-                                         <Input
-                                            ref={voiceFileInputRef}
-                                            id="voice-file-upload"
-                                            type="file"
-                                            accept="audio/mpeg, audio/wav, audio/ogg"
-                                            onChange={handleVoiceFileChange}
-                                            className="hidden"
-                                        />
-                                    </div>
-                                    {isRecording && <p className="text-sm text-destructive animate-pulse">Recording...</p>}
-                                     {audioDataUrl && (
-                                        <div className="space-y-2 border p-3 rounded-md">
-                                            <Label>Preview</Label>
-                                            <audio ref={audioRef} controls src={audioDataUrl} className="w-full">
-                                                Your browser does not support the audio element.
-                                            </audio>
-                                            <Button variant="ghost" size="sm" onClick={removeAudio} className="text-destructive w-full">
-                                                <Trash2 className="mr-2 h-4 w-4" /> Remove Audio
-                                            </Button>
-                                        </div>
-                                    )}
-                                     <p className="text-xs text-muted-foreground">Record a message or upload an audio file (max 5MB).</p>
-                                </div>
-                            );
-                        case 'password': // Password Protected Content Inputs
-                                return (
-                                    <div className="space-y-4">
-                                        <div className="space-y-2">
-                                            <Label htmlFor="password-content">Content (URL or Text) *</Label>
-                                            <Textarea
-                                                id="password-content"
-                                                value={inputData.password_content || ''}
-                                                onChange={(e) => handleInputChange('password_content', e.target.value)}
-                                                placeholder="Enter the URL or text to protect..."
-                                                rows={4}
-                                                required
-                                            />
-                                        </div>
-                                         <div className="space-y-2">
-                                            <Label htmlFor="password-pass">Password *</Label>
-                                             <div className="flex items-center gap-2">
-                                                <Input
-                                                    id="password-pass"
-                                                    type={passwordVisible ? 'text' : 'password'}
-                                                    value={inputData.password_pass || ''}
-                                                    onChange={(e) => handleInputChange('password_pass', e.target.value)}
-                                                    placeholder="Enter a strong password"
-                                                    required
-                                                />
-                                                 <Button variant="ghost" size="icon" onClick={() => setPasswordVisible(!passwordVisible)} type="button" aria-label={passwordVisible ? "Hide password" : "Show password"}>
-                                                    {passwordVisible ? <EyeOff className="h-4 w-4"/> : <Eye className="h-4 w-4"/>}
-                                                </Button>
-                                             </div>
-                                        </div>
-                                         <div className="space-y-2">
-                                            <Label htmlFor="password-hint">Password Hint (Optional)</Label>
-                                            <Input
-                                                id="password-hint"
-                                                type="text"
-                                                value={inputData.password_hint || ''}
-                                                onChange={(e) => handleInputChange('password_hint', e.target.value)}
-                                                placeholder="e.g., Your pet's name"
-                                            />
-                                             <p className="text-xs text-muted-foreground">Hint will be visible on the password page.</p>
-                                        </div>
-                                        <p className="text-xs text-muted-foreground">
-                                            <Info className="inline-block h-3 w-3 mr-1" />
-                                            The QR code will link to a page asking for this password.
-                                            <strong className="ml-1">This is a basic simulation and not cryptographically secure for sensitive data.</strong>
-                                        </p>
-                                    </div>
-                                );
-
+                        // Removed Voice inputs
+                        // Removed Password inputs
 
                         default:
                             return <p className="text-center text-muted-foreground">Select a QR code type to begin.</p>;
@@ -1926,8 +1623,7 @@ export function QrCodeGenerator() {
                                         onValueChange={(value: QrType) => {
                                             setQrType(value);
                                             setInputData({}); // Clear input data on type change
-                                            setAudioBlob(null); // Clear audio state
-                                            setAudioDataUrl(null);
+                                            // Removed audio state clearing
                                             setExpiryDate(undefined);
                                             setQrLabel('');
                                          }}
