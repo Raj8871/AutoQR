@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
@@ -17,13 +18,11 @@ import { Download, Image as ImageIcon, Link as LinkIcon, Phone, Mail, MessageSqu
 import { format } from "date-fns";
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
+import type { Toast } from '@/hooks/use-toast'; // Import Toast type
 import { Checkbox } from '@/components/ui/checkbox';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
-// Removed Firebase imports
-// Removed import { FirebaseAnalyticsLogger } from '@/components/FirebaseAnalyticsLogger'; // Import FirebaseAnalyticsLogger
-// import { logFirebaseEvent } from '@/lib/firebase'; // Import logFirebaseEvent
 
 // --- Types ---
 
@@ -40,11 +39,8 @@ const qrTypeOptions: { value: QrType; label: string; icon: React.ElementType; de
   { value: 'sms', label: 'SMS Message', icon: MessageSquare, description: 'Open the SMS app with a pre-filled number and message.' },
   { value: 'location', label: 'Google Maps Location', icon: MapPin, description: 'Open Google Maps at the specified coordinates.' },
   { value: 'event', label: 'Calendar Event', icon: CalendarIcon, description: 'Add an event to the user\'s calendar (ICS format).' },
-  // Removed vCard
   { value: 'wifi', label: 'Wi-Fi Network', icon: Wifi, description: 'Connect to a Wi-Fi network automatically.' },
   { value: 'upi', label: 'UPI Payment', icon: CreditCard, description: 'Generate a QR for UPI payments with a specific amount and note.' },
-  // Removed Voice
-  // Removed Password
 ];
 
 // Define style types
@@ -121,7 +117,7 @@ const getLocalStorageItem = <T>(key: string, defaultValue: T): T => {
 };
 
 // Set item in local storage
-const setLocalStorageItem = <T>(key: string, value: T): void => {
+const setLocalStorageItem = <T>(key: string, value: T, toast?: (options: Omit<Toast, 'id'>) => void): void => {
   if (typeof window === 'undefined') {
     return;
   }
@@ -129,15 +125,13 @@ const setLocalStorageItem = <T>(key: string, value: T): void => {
     window.localStorage.setItem(key, JSON.stringify(value));
   } catch (error) {
     console.error(`Error setting localStorage key “${key}”:`, error);
-     toast({ variant: "destructive", title: "Storage Error", description: "Could not save history. Local storage might be full or disabled." });
+     toast?.({ variant: "destructive", title: "Storage Error", description: "Could not save history. Local storage might be full or disabled." });
   }
 };
 
 
-// Removed formatVCard function
-
 // Format ICS data
-const formatICS = (data: Record<string, any>): string => {
+const formatICS = (data: Record<string, any>, toast: (options: Omit<Toast, 'id'>) => void): string => {
     const formatDate = (date: Date | null | undefined): string => {
       if (!date) return '';
       // Format: YYYYMMDDTHHMMSSZ (UTC time)
@@ -176,7 +170,7 @@ const formatICS = (data: Record<string, any>): string => {
 }
 
 // Format Wi-Fi data
-const formatWifi = (data: Record<string, any>): string => {
+const formatWifi = (data: Record<string, any>, toast: (options: Omit<Toast, 'id'>) => void): string => {
     // Escape special characters: \, ;, ,, ", :
     const escapeValue = (value: string = '') => value.replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/"/g, '\\"').replace(/:/g, '\\:');
 
@@ -199,7 +193,7 @@ const formatWifi = (data: Record<string, any>): string => {
 
 
 // Format UPI data
-const formatUpi = (data: Record<string, any>): string => {
+const formatUpi = (data: Record<string, any>, toast: (options: Omit<Toast, 'id'>) => void): string => {
     const upiId = (data.upi_id || '').trim();
     const payeeName = (data.upi_name || '').trim(); // Optional payee name
     const amount = parseFloat(data.upi_amount || '0');
@@ -232,9 +226,6 @@ const formatUpi = (data: Record<string, any>): string => {
 
     return upiString;
 };
-
-
-// --- Password Protection (Basic Simulation) --- Removed
 
 // Process image for shape/opacity
 const processImage = (
@@ -295,7 +286,7 @@ const processImage = (
 
 
 // Generate the final data string for the QR code
-const generateQrDataString = (type: QrType, data: Record<string, any>): string => {
+const generateQrDataString = (type: QrType, data: Record<string, any>, toast: (options: Omit<Toast, 'id'>) => void): string => {
     let targetData = '';
     try {
          switch (type) {
@@ -364,24 +355,21 @@ const generateQrDataString = (type: QrType, data: Record<string, any>): string =
              }
              break;
           case 'event':
-              targetData = formatICS({ summary: data.event_summary, location: data.event_location, description: data.event_description, startDate: data.event_start, endDate: data.event_end });
+              targetData = formatICS({ summary: data.event_summary, location: data.event_location, description: data.event_description, startDate: data.event_start, endDate: data.event_end }, toast);
               // formatICS handles its own validation and returns '' on failure
               if (!targetData && (data.event_summary || data.event_start)) {
                  // formatICS might have already shown a toast, maybe avoid double-toasting
                  // console.warn("ICS data generation failed.");
               }
               break;
-          // Removed vCard case
           case 'wifi':
-               targetData = formatWifi({ wifi_ssid: data.wifi_ssid, wifi_password: data.wifi_password, wifi_encryption: data.wifi_encryption || 'WPA/WPA2', wifi_hidden: data.wifi_hidden || false });
+               targetData = formatWifi({ wifi_ssid: data.wifi_ssid, wifi_password: data.wifi_password, wifi_encryption: data.wifi_encryption || 'WPA/WPA2', wifi_hidden: data.wifi_hidden || false }, toast);
                 // formatWifi handles its own validation
                break;
           case 'upi': // Added UPI case
-               targetData = formatUpi({ upi_id: data.upi_id, upi_name: data.upi_name, upi_amount: data.upi_amount, upi_note: data.upi_note });
+               targetData = formatUpi({ upi_id: data.upi_id, upi_name: data.upi_name, upi_amount: data.upi_amount, upi_note: data.upi_note }, toast);
                 // formatUpi handles its own validation
                break;
-          // Removed Voice case
-          // Removed Password case
           default: targetData = '';
         }
     } catch (error) {
@@ -417,6 +405,8 @@ const generateQrDataString = (type: QrType, data: Record<string, any>): string =
 };
 
 export function QrCodeGenerator() {
+  const { toast } = useToast(); // Get toast instance
+
   // Core QR State
   const [qrType, setQrType] = useState<QrType>('url');
   const [inputData, setInputData] = useState<Record<string, any>>({ url: '' }); // Default with empty url
@@ -437,9 +427,6 @@ export function QrCodeGenerator() {
   const [expiryDate, setExpiryDate] = useState<Date | undefined>(undefined);
   const [expiryTime, setExpiryTime] = useState<string>("00:00"); // Default time
   const [wifiPasswordVisible, setWifiPasswordVisible] = useState<boolean>(false);
-  // Removed passwordVisible state
-
-   // Removed Voice Message State
 
    // History State
   const [history, setHistory] = useState<HistoryItem[]>([]);
@@ -454,7 +441,6 @@ export function QrCodeGenerator() {
   // Refs
   const logoInputRef = useRef<HTMLInputElement>(null);
   const qrCodeRef = useRef<HTMLDivElement>(null); // Ref for the container div
-  // Removed voiceFileInputRef and audioRef
 
    // --- History Management ---
 
@@ -474,7 +460,7 @@ export function QrCodeGenerator() {
 
   // Update local storage and available tags whenever history changes
   useEffect(() => {
-    setLocalStorageItem(LOCAL_STORAGE_KEY, history);
+    setLocalStorageItem(LOCAL_STORAGE_KEY, history, toast); // Pass toast for error handling
 
     // Update unique tags
     const tagsSet = new Set<string>();
@@ -487,13 +473,13 @@ export function QrCodeGenerator() {
       }
       return prevTags;
     });
-  }, [history]);
+  }, [history, toast]);
 
 
    // Add item to history
   const addToHistory = useCallback((newItemData: Omit<HistoryItem, 'id' | 'timestamp' | 'previewSvgDataUrl' | 'isFavorite' | 'notes' | 'tags'>, svgDataUrl: string | null) => {
     // Basic validation before adding: Ensure there's data
-    const qrDataString = generateQrDataString(newItemData.qrType, newItemData.inputData);
+    const qrDataString = generateQrDataString(newItemData.qrType, newItemData.inputData, toast); // Pass toast
     if (!qrDataString) {
         // console.warn("Attempted to save empty or invalid QR code to history.");
         return; // Don't save if data generation failed
@@ -549,7 +535,7 @@ export function QrCodeGenerator() {
 
         return newHistory;
      });
-  }, []); // No dependencies needed if it only calls setHistory based on arguments
+  }, [toast]); // Added toast to dependency array
 
 
    // Clear history
@@ -557,13 +543,13 @@ export function QrCodeGenerator() {
     setHistory([]);
     setAvailableTags([]); // Clear available tags as well
     toast({ title: "History Cleared", description: "Your QR code generation history has been removed." });
-  }, []);
+  }, [toast]);
 
   // Remove single item from history
   const removeFromHistory = useCallback((id: string) => {
     setHistory(prev => prev.filter(item => item.id !== id));
     toast({ title: "Item Removed", description: "QR code removed from history." });
-  }, []);
+  }, [toast]);
 
   // Toggle favorite status
   const toggleFavorite = useCallback((id: string) => {
@@ -609,7 +595,7 @@ export function QrCodeGenerator() {
 
    // Handle share action (example using Web Share API if available)
    const shareHistoryItem = async (item: HistoryItem) => {
-       const qrData = generateQrDataString(item.qrType, item.inputData);
+       const qrData = generateQrDataString(item.qrType, item.inputData, toast); // Pass toast
        const shareData: ShareData = {
            title: `QR Code: ${item.label || item.qrType.toUpperCase()}`,
            text: `Scan this QR code! Type: ${item.qrType}`, // Simplified text
@@ -681,8 +667,8 @@ export function QrCodeGenerator() {
 
   // --- QR Data Generation ---
   const generateQrData = useCallback((): string => {
-      return generateQrDataString(qrType, inputData);
-  }, [qrType, inputData]);
+      return generateQrDataString(qrType, inputData, toast); // Pass toast
+  }, [qrType, inputData, toast]); // Added toast dependency
 
 
   // --- QR Code Instance & Preview Update ---
@@ -754,7 +740,6 @@ export function QrCodeGenerator() {
 
                             // Save to history AFTER successful generation and preview update
                              const currentInputData = { ...inputData };
-                            // Removed voice data URL cleanup
 
                             addToHistory({
                                 qrType: qrType,
@@ -806,10 +791,9 @@ export function QrCodeGenerator() {
 
       return () => {
            clearTimeout(debounceTimeout);
-           // The container clearing is now handled at the beginning of updateQrCode
        };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [options, qrType, inputData, qrLabel, addToHistory]); // Added addToHistory to dependency array
+  }, [options, qrType, inputData, qrLabel, addToHistory, toast]); // Added toast to dependency array
 
 
    // Reload settings from a history item
@@ -825,12 +809,11 @@ export function QrCodeGenerator() {
         width: options.width, // Keep current preview size
         height: options.height,
         ...item.options,  // Apply stored customizable options
-        data: generateQrDataString(item.qrType, dataToLoad) // Regenerate data string with loaded data
+        data: generateQrDataString(item.qrType, dataToLoad, toast) // Pass toast
     };
     setOptions(loadedOptions); // This triggers the main useEffect
     setQrLabel(item.label);
 
-    // Removed audio state restoration
 
     // Attempt to reconstruct logo state from stored options
     if (item.options?.image) {
@@ -851,7 +834,7 @@ export function QrCodeGenerator() {
 
     setQrPreviewKey(Date.now()); // Force re-render of preview container if needed
     toast({ title: "Loaded from History", description: `Restored QR code configuration from ${format(item.timestamp, 'PP pp')}.` });
-  }, [removeLogo, options.width, options.height, generateQrDataString]); // Added generateQrDataString
+  }, [removeLogo, options.width, options.height, toast]); // Added toast dependency
 
 
   // --- Input Handlers ---
@@ -1013,7 +996,7 @@ export function QrCodeGenerator() {
          }));
     }
  // eslint-disable-next-line react-hooks/exhaustive-deps
- }, [logoSize, options.imageOptions]); // Removed logoShape, logoOpacity, relying on state
+ }, [logoSize, options.imageOptions, toast]); // Added toast dependency
 
 
  const handleLogoUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1036,7 +1019,7 @@ export function QrCodeGenerator() {
       reader.onerror = () => toast({ variant: "destructive", title: "File Read Error", description: "Could not read the selected file." });
       reader.readAsDataURL(file);
     }
- }, [logoShape, logoOpacity, applyLogoShapeAndOpacity]);
+ }, [logoShape, logoOpacity, applyLogoShapeAndOpacity, toast]); // Added toast dependency
 
  const triggerLogoUpload = () => logoInputRef.current?.click();
 
@@ -1145,10 +1128,8 @@ export function QrCodeGenerator() {
           console.error("Error downloading QR code:", error);
           toast({ variant: "destructive", title: "Download Failed", description: "Could not download the QR code. Please try again." });
       }
-  }, [qrCodeInstance, options, fileExtension, qrType, generateQrData, isQrGenerated, expiryDate, qrLabel]);
+  }, [qrCodeInstance, options, fileExtension, qrType, generateQrData, isQrGenerated, expiryDate, qrLabel, toast]); // Added toast dependency
 
-
-    // Removed Voice Message Recording logic
 
      // --- Filtered and Sorted History ---
     const filteredHistory = history
@@ -1308,7 +1289,6 @@ export function QrCodeGenerator() {
                                     <p className="text-xs text-muted-foreground">* Event Title and Start Date/Time are required.</p>
                                 </div>
                             );
-                        // Removed vCard inputs
                         case 'wifi':
                             return (
                                 <div className="space-y-4">
@@ -1400,9 +1380,6 @@ export function QrCodeGenerator() {
                                     <p className="text-xs text-muted-foreground">* UPI ID and Amount are required.</p>
                                 </div>
                             );
-                        // Removed Voice inputs
-                        // Removed Password inputs
-
                         default:
                             return <p className="text-center text-muted-foreground">Select a QR code type to begin.</p>;
                     }
@@ -1589,7 +1566,6 @@ export function QrCodeGenerator() {
   // --- Main Render ---
   return (
     <>
-    {/* Removed <FirebaseAnalyticsLogger /> */}
     <div className="w-full max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-8 px-4 py-6">
         {/* Options Panel */}
         <Card className="lg:col-span-2 order-2 lg:order-1 animate-fade-in">
@@ -1623,7 +1599,6 @@ export function QrCodeGenerator() {
                                         onValueChange={(value: QrType) => {
                                             setQrType(value);
                                             setInputData({}); // Clear input data on type change
-                                            // Removed audio state clearing
                                             setExpiryDate(undefined);
                                             setQrLabel('');
                                          }}
@@ -1967,3 +1942,4 @@ export function QrCodeGenerator() {
     </>
   );
 }
+
