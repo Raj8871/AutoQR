@@ -1,4 +1,3 @@
-
 'use client'; // Add 'use client' directive for interactivity
 
 import Link from 'next/link';
@@ -6,7 +5,7 @@ import { Sparkles, QrCode, Menu, X } from 'lucide-react'; // Added Menu, X icons
 import { cn } from '@/lib/utils';
 import React, { useState } from 'react'; // Import React and useState
 import { Button } from '@/components/ui/button'; // Import Button
-import { Sheet, SheetContent, SheetTrigger, SheetClose } from '@/components/ui/sheet'; // Import Sheet components
+import { Sheet, SheetContent, SheetTrigger, SheetClose, SheetTitle } from '@/components/ui/sheet'; // Import Sheet components
 
 export function Header() {
    const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -103,4 +102,3 @@ export function Header() {
     </header>
   );
 }
-
