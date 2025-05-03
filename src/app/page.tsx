@@ -5,6 +5,7 @@ import { HeroSection } from '@/components/HeroSection'; // Import the hero compo
 import { FeaturesSection } from '@/components/FeaturesSection'; // Import Features
 import { HowItWorksSection } from '@/components/HowItWorksSection'; // Import How It Works
 import { WhyChooseUsSection } from '@/components/WhyChooseUsSection'; // Import Why Choose Us
+import { HowToUseSection } from '@/components/HowToUseSection'; // Import the How to Use component
 import { Separator } from '@/components/ui/separator'; // Import Separator for visual breaks
 
 // This remains a Server Component
@@ -17,6 +18,11 @@ export default function Home() {
 
         {/* Hero Section */}
         <HeroSection />
+
+        <Separator className="my-12 md:my-16" />
+
+        {/* How to Use Section */}
+        <HowToUseSection />
 
         <Separator className="my-12 md:my-16" />
 
