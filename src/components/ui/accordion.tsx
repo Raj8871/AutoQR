@@ -15,7 +15,10 @@ const Accordion = React.forwardRef<
   <AccordionPrimitive.Root
     ref={ref}
     className={cn(className)}
-    {...props} // Ensure collapsible is passed correctly if provided
+    // The `collapsible` prop is inherently part of AccordionPrimitive.Root when type="single"
+    // For type="multiple", it's implicitly true and doesn't need to be passed.
+    // We spread the rest of the props, which will include `collapsible` if provided by the parent.
+    {...props}
   />
 ));
 Accordion.displayName = AccordionPrimitive.Root.displayName
@@ -68,4 +71,3 @@ const AccordionContent = React.forwardRef<
 AccordionContent.displayName = AccordionPrimitive.Content.displayName
 
 export { Accordion, AccordionItem, AccordionTrigger, AccordionContent }
-

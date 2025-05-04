@@ -24,6 +24,7 @@ import { cn } from '@/lib/utils';
 import { useToast, type Toast } from '@/hooks/use-toast';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
+// Removed import { FirebaseAnalyticsLogger } from '@/components/FirebaseAnalyticsLogger'; // Import FirebaseAnalyticsLogger
 import { logFirebaseEvent } from '@/lib/firebase'; // Import logFirebaseEvent
 
 
@@ -56,7 +57,6 @@ const qrTypeOptions: { value: QrType; label: string; icon: React.ElementType; de
   { value: 'wifi', label: 'Wi-Fi Network', icon: Wifi, description: 'Connect to a Wi-Fi network automatically.' },
   { value: 'vcard', label: 'Contact (vCard)', icon: Contact, description: 'Share contact details in a standard vCard format.' },
   { value: 'upi', label: 'UPI Payment', icon: CreditCard, description: 'Generate a QR for UPI payments with a specific amount and note.' },
- // { value: 'audio-image', label: 'Voice Gift Card', icon: Gift, description: 'Combine an image and audio message into a scannable gift card style page.' },
 ];
 
 // Define style types
@@ -580,10 +580,20 @@ export default function QrCodeGenerator() {
 
       const updateQrCode = async () => {
            try {
-               // Clear previous content only if an instance exists and the container is not empty
+                // Clear previous content only if an instance exists and the container is not empty
                 if (instance && container && container.firstChild) {
-                    while (container.firstChild) {
-                        container.removeChild(container.firstChild);
+                    try {
+                        // Use a loop for robustness, even if expecting one child
+                        while (container.firstChild) {
+                            container.removeChild(container.firstChild);
+                        }
+                    } catch (removeError: any) {
+                        // Log only if it's the specific "Node not child" error, otherwise re-throw
+                        if (removeError.name === 'NotFoundError' && removeError.message.includes("The node to be removed is not a child of this node")) {
+                            console.warn("Attempted to remove a QR node that wasn't a child (likely race condition). Ignoring.", removeError);
+                        } else {
+                           throw removeError; // Re-throw unexpected errors
+                        }
                     }
                     instance = null; // Mark instance as removed from DOM
                     setQrCodeInstance(null);
@@ -641,8 +651,12 @@ export default function QrCodeGenerator() {
                        while (container.firstChild) {
                             container.removeChild(container.firstChild);
                        }
-                   } catch (removeError) {
-                        console.warn("Error clearing QR container:", removeError); // Log clear error as warning
+                   } catch (removeError: any) {
+                        if (removeError.name === 'NotFoundError' && removeError.message.includes("The node to be removed is not a child of this node")) {
+                           console.warn("Error clearing QR container during error handling (likely race condition). Ignoring.", removeError);
+                        } else {
+                            console.error("Unexpected error clearing QR container:", removeError);
+                        }
                    }
                }
            }
@@ -652,19 +666,9 @@ export default function QrCodeGenerator() {
 
        return () => {
             clearTimeout(debounceTimeout);
-            // Clean up QR instance on unmount or before next update
-            // if (instance && container && container.firstChild) { // Check if container still exists
-            //      try {
-            //          while (container.firstChild) {
-            //              container.removeChild(container.firstChild);
-            //          }
-            //      } catch (unmountError) {
-            //          console.warn("Error during QR unmount cleanup:", unmountError);
-            //      }
-            // }
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [options, qrType, inputDataState, toast]); // Remove qrCodeInstance
+  }, [options, qrType, inputDataState, toast]);
 
 
    // --- History Management ---
@@ -1409,6 +1413,7 @@ export default function QrCodeGenerator() {
 
   // --- Main Render ---
   return (
+
     <div className="w-full max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-8 px-4 py-6">
         {/* Options Panel */}
         <Card className="lg:col-span-2 order-2 lg:order-1 animate-fade-in">
@@ -1426,7 +1431,7 @@ export default function QrCodeGenerator() {
                 {/* Content Tab */}
                 <TabsContent value="content" className="pt-6 space-y-6">
                     {/* Accordion for Content, Styling, Logo, Extras */}
-                    <Accordion type="multiple" collapsible className="w-full" defaultValue={["content-item", "styling-item"]}>
+                    <Accordion type="multiple" className="w-full" defaultValue={["content-item", "styling-item"]}>
                          {/* Step 1: Content */}
                         <AccordionItem value="content-item">
                              <AccordionTrigger className="text-lg font-semibold">
@@ -1678,17 +1683,18 @@ export default function QrCodeGenerator() {
                                  </div>
                               </AlertDialogTitle>
                              <AlertDialogDescription>
-                                Browse, search, reload, duplicate, or manage your previously generated QR codes. Click an item to load it. History is stored locally in your browser.
+                                Browse, search, reload, duplicate, or manage your previously generated QR codes. Click an item to load it.
+                                <strong className="block mt-1">Note: History is stored locally in your browser. Clearing browser data will erase history.</strong>
                              </AlertDialogDescription>
                          </AlertDialogHeader>
 
                          <div className="flex-grow border rounded-md my-4 overflow-hidden">
                             {history.length === 0 ? (
-                                <div className="flex items-center justify-center h-full text-muted-foreground">
-                                    No history yet. Generate and save some QR codes!
+                                <div className="flex items-center justify-center h-full text-muted-foreground p-4 text-center">
+                                    No history yet. Generate and save some QR codes to see them here!
                                 </div>
                             ) : filteredHistory.length === 0 && searchTerm ? (
-                                <div className="flex items-center justify-center h-full text-muted-foreground">
+                                <div className="flex items-center justify-center h-full text-muted-foreground p-4 text-center">
                                     No history items match your search "{searchTerm}".
                                 </div>
                              ) : (
@@ -1700,10 +1706,10 @@ export default function QrCodeGenerator() {
                                              const displayLabel = item.label || `${qrTypeOptions.find(opt => opt.value === item.type)?.label || item.type} - ${item.id.slice(-4)}`;
 
                                              return (
-                                                 <Card key={item.id} className="overflow-hidden group relative hover:shadow-lg transition-shadow duration-200 flex flex-col h-full">
+                                                 <Card key={item.id} className="overflow-hidden group relative hover:shadow-lg transition-shadow duration-200 flex flex-col h-full bg-card/70 border">
                                                       <button
                                                         onClick={() => { if (!isEditing) loadFromHistory(item); }}
-                                                        className="flex-grow flex items-start gap-3 p-3 cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary rounded-t-lg w-full text-left" // Ensure full width and left align
+                                                        className="flex-grow flex items-start gap-3 p-3 cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary rounded-t-lg w-full text-left hover:bg-muted/30 transition-colors" // Ensure full width and left align, add hover effect
                                                         aria-label={`Load ${displayLabel}`}
                                                         disabled={isEditing}
                                                       >
@@ -1724,7 +1730,7 @@ export default function QrCodeGenerator() {
                                                                         maxLength={50}
                                                                         autoFocus
                                                                         onKeyDown={(e) => { if (e.key === 'Enter') { editHistoryLabel(item.id, editingLabelValue); setEditingLabelId(null); } else if (e.key === 'Escape') { setEditingLabelId(null); } }}
-                                                                        onClick={(e) => e.stopPropagation()}
+                                                                        onClick={(e) => e.stopPropagation()} // Prevent card click
                                                                     />
                                                                     <Button size="icon" variant="ghost" className="h-7 w-7 shrink-0" onClick={(e) => { e.stopPropagation(); editHistoryLabel(item.id, editingLabelValue); setEditingLabelId(null); }}>
                                                                         <Check className="h-4 w-4 text-green-600" />
@@ -1752,6 +1758,20 @@ export default function QrCodeGenerator() {
                                                       </button>
 
                                                       <CardFooter className="p-2 border-t bg-muted/30 flex justify-end gap-1 mt-auto">
+                                                          {/* Edit Button */}
+                                                         {!isEditing && (
+                                                            <TooltipProvider delayDuration={300}>
+                                                                 <Tooltip>
+                                                                    <TooltipTrigger asChild>
+                                                                        <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-primary hover:bg-primary/10 h-7 w-7" onClick={(e) => { e.stopPropagation(); setEditingLabelId(item.id); setEditingLabelValue(item.label || ''); }}>
+                                                                           <Pencil className="h-4 w-4" />
+                                                                            <span className="sr-only">Edit Label</span>
+                                                                        </Button>
+                                                                    </TooltipTrigger>
+                                                                    <TooltipContent side="top"><p>Edit Label</p></TooltipContent>
+                                                                 </Tooltip>
+                                                            </TooltipProvider>
+                                                         )}
                                                          {/* Duplicate Button */}
                                                          <TooltipProvider delayDuration={300}>
                                                             <Tooltip>
@@ -1776,20 +1796,7 @@ export default function QrCodeGenerator() {
                                                                 <TooltipContent side="top"><p>Share (Coming Soon)</p></TooltipContent>
                                                             </Tooltip>
                                                         </TooltipProvider>
-                                                         {/* Edit Button */}
-                                                         {!isEditing && (
-                                                            <TooltipProvider delayDuration={300}>
-                                                                 <Tooltip>
-                                                                    <TooltipTrigger asChild>
-                                                                        <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-primary hover:bg-primary/10 h-7 w-7" onClick={(e) => { e.stopPropagation(); setEditingLabelId(item.id); setEditingLabelValue(item.label || ''); }}>
-                                                                           <Pencil className="h-4 w-4" />
-                                                                            <span className="sr-only">Edit Label</span>
-                                                                        </Button>
-                                                                    </TooltipTrigger>
-                                                                    <TooltipContent side="top"><p>Edit Label</p></TooltipContent>
-                                                                 </Tooltip>
-                                                            </TooltipProvider>
-                                                        )}
+
                                                          {/* Delete Button */}
                                                          <AlertDialog>
                                                             <TooltipProvider delayDuration={300}>
@@ -1930,4 +1937,3 @@ export default function QrCodeGenerator() {
     </div>
   );
 }
-
