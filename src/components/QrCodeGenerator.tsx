@@ -25,13 +25,12 @@ import { useToast, type Toast } from '@/hooks/use-toast';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { logFirebaseEvent } from '@/lib/firebase'; // Import logFirebaseEvent
-import { z } from 'zod';
 
 
 // --- Types ---
 
 // Define allowed QR types
-type QrType = 'url' | 'text' | 'email' | 'phone' | 'whatsapp' | 'sms' | 'location' | 'event' | 'wifi' | 'vcard' | 'upi' | 'audio-image';
+type QrType = 'url' | 'text' | 'email' | 'phone' | 'whatsapp' | 'sms' | 'location' | 'event' | 'wifi' | 'vcard' | 'upi';
 
 // Define structure for history items
 interface HistoryItem {
@@ -47,7 +46,7 @@ interface HistoryItem {
 // QR type options
 const qrTypeOptions: { value: QrType; label: string; icon: React.ElementType; description: string }[] = [
   { value: 'url', label: 'Website URL', icon: LinkIcon, description: 'Link to any website or online resource.' },
-  { value: 'text', label: 'Plain Text', icon: MessageSquare, description: 'Display any text content when scanned.' },
+  { value: 'text', label: 'Plain Text', icon: FileText, description: 'Display any text content when scanned.' },
   { value: 'email', label: 'Email Address', icon: Mail, description: 'Pre-fill recipient, subject, and body for an email.' },
   { value: 'phone', label: 'Phone Number', icon: Phone, description: 'Initiate a phone call to the specified number.' },
   { value: 'whatsapp', label: 'WhatsApp Message', icon: MessageSquare, description: 'Open WhatsApp with a pre-filled message to a number.' },
@@ -57,7 +56,7 @@ const qrTypeOptions: { value: QrType; label: string; icon: React.ElementType; de
   { value: 'wifi', label: 'Wi-Fi Network', icon: Wifi, description: 'Connect to a Wi-Fi network automatically.' },
   { value: 'vcard', label: 'Contact (vCard)', icon: Contact, description: 'Share contact details in a standard vCard format.' },
   { value: 'upi', label: 'UPI Payment', icon: CreditCard, description: 'Generate a QR for UPI payments with a specific amount and note.' },
-  { value: 'audio-image', label: 'Voice Gift Card', icon: Gift, description: 'Combine an image and audio message into a scannable gift card style page.' },
+ // { value: 'audio-image', label: 'Voice Gift Card', icon: Gift, description: 'Combine an image and audio message into a scannable gift card style page.' },
 ];
 
 // Define style types
@@ -334,8 +333,8 @@ const processImage = (
 // Generate the final data string for the QR code
 const generateQrDataString = (type: QrType, data: Record<string, any>, toastFn: (options: Omit<Toast, 'id'>) => void): string => {
     let targetData = '';
-    const MAX_DATA_LENGTH_WARN = 2000; // Lower warning threshold for complex data like Data URIs or vCards
-    const MAX_DATA_LENGTH_FAIL = 2953; // Absolute max for alphanumeric in QR spec (Level L, adjust if using higher EC)
+    const MAX_DATA_LENGTH_WARN = 1500; // Lower warning threshold for complex data like Data URIs or vCards
+    const MAX_DATA_LENGTH_FAIL = 2953; // Absolute max for alphanumeric in QR spec (Level H)
 
     try {
          switch (type) {
@@ -411,64 +410,44 @@ const generateQrDataString = (type: QrType, data: Record<string, any>, toastFn: 
           case 'event':
               targetData = formatICS(data, toastFn);
               if (!targetData && (data.event_summary || data.event_start)) {
+                 // Don't toast, let user fix input based on empty preview
                  return '';
               }
               if (!targetData && !data.event_summary && !data.event_start) {
-                  return '';
+                  return ''; // Empty inputs
               }
               break;
           case 'wifi':
                targetData = formatWifi(data, toastFn);
                if (!targetData && (data.wifi_ssid)) {
+                   // Don't toast, let user fix input based on empty preview
                     return '';
                }
                if (!targetData && !data.wifi_ssid) {
-                    return '';
+                    return ''; // Empty SSID
                }
                break;
            case 'vcard':
                 targetData = formatVCard(data, toastFn);
                 if (!targetData && (data.vcard_firstName || data.vcard_lastName)) {
+                   // Don't toast, let user fix input based on empty preview
                     return '';
                 }
                 if (!targetData && !data.vcard_firstName && !data.vcard_lastName) {
-                     return '';
+                     return ''; // Empty required fields
                 }
                 break;
           case 'upi':
                targetData = formatUpi(data, toastFn);
                if (!targetData && (data.upi_id || data.upi_amount)) {
+                   // Don't toast, let user fix input based on empty preview
                   return '';
                }
                 if (!targetData && (!data.upi_id || !data.upi_amount)) {
+                    // Don't toast, let user fix input based on empty preview
                    return '';
                 }
                break;
-          case 'audio-image':
-                const audioUrl = data.audioUrl || '';
-                const imageUrl = data.imageUrl || '';
-                // Basic validation
-                if (!audioUrl || !imageUrl) {
-                    // Don't toast immediately if files aren't uploaded yet
-                    return '';
-                }
-                 // Simulate generating a link to a landing page. In a real app, this would be a server endpoint.
-                 // For demo purposes, we encode the data URLs directly, which can make the QR huge.
-                 // A better approach would be to upload files and link to a page: /play?audio=id&image=id
-                 // targetData = `/play?audio=${encodeURIComponent(audioUrl)}&image=${encodeURIComponent(imageUrl)}`;
-
-                 // Simple simulation for client-side only (WILL CREATE VERY LARGE QR)
-                 const pageContent = `
-                 <!DOCTYPE html><html><head><title>Voice Gift</title>
-                 <meta name="viewport" content="width=device-width, initial-scale=1">
-                 <style>body{margin:0;font-family:sans-serif;display:flex;justify-content:center;align-items:center;min-height:100vh;background:#f0f0f0;} .card{background:white;border-radius:10px;box-shadow:0 4px 15px rgba(0,0,0,0.1);padding:20px;text-align:center;max-width:90%;} img{max-width:100%;height:auto;border-radius:5px;margin-bottom:15px;} audio{width:100%;margin-top:10px;}</style>
-                 </head><body><div class="card">
-                 <img src="${imageUrl}" alt="Gift Image">
-                 <audio controls autoplay src="${audioUrl}">Your browser does not support the audio element.</audio>
-                 </div></body></html>`;
-                 targetData = `data:text/html;charset=utf-8,${encodeURIComponent(pageContent)}`;
-
-                break;
           default: targetData = '';
         }
     } catch (error) {
@@ -527,15 +506,6 @@ export default function QrCodeGenerator() {
   const [expiryTime, setExpiryTime] = useState<string>("00:00");
   const [wifiPasswordVisible, setWifiPasswordVisible] = useState<boolean>(false);
 
-    // Audio/Image Combo State
-  const [audioFile, setAudioFile] = useState<File | null>(null);
-  const [imageFile, setImageFile] = useState<File | null>(null);
-  const [audioPreviewUrl, setAudioPreviewUrl] = useState<string | null>(null);
-  const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
-  const [isRecording, setIsRecording] = useState(false);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioChunksRef = useRef<Blob[]>([]);
-
 
   // History State
   const [history, setHistory] = useState<HistoryItem[]>([]);
@@ -548,8 +518,6 @@ export default function QrCodeGenerator() {
 
   // Refs
   const logoInputRef = useRef<HTMLInputElement>(null);
-  const audioInputRef = useRef<HTMLInputElement>(null);
-  const imageInputRef = useRef<HTMLInputElement>(null);
   const qrCodeRef = useRef<HTMLDivElement>(null);
 
 
@@ -602,7 +570,6 @@ export default function QrCodeGenerator() {
       if (!container) return;
 
       let instance = qrCodeInstance;
-      let didAppend = false; // Flag to track if append was called
 
       // Ensure width/height are numbers before passing to library
       const width = typeof options.width === 'number' ? options.width : defaultOptions.width!;
@@ -631,7 +598,6 @@ export default function QrCodeGenerator() {
                 // Re-create and append instance if data exists
                 instance = new QRCodeStyling(qrOptions);
                 instance.append(container);
-                didAppend = true;
                 setQrCodeInstance(instance);
 
 
@@ -675,8 +641,8 @@ export default function QrCodeGenerator() {
                        while (container.firstChild) {
                             container.removeChild(container.firstChild);
                        }
-                   } catch {
-                        // Ignore cleanup errors
+                   } catch (removeError) {
+                        console.warn("Error clearing QR container:", removeError); // Log clear error as warning
                    }
                }
            }
@@ -686,9 +652,19 @@ export default function QrCodeGenerator() {
 
        return () => {
             clearTimeout(debounceTimeout);
+            // Clean up QR instance on unmount or before next update
+            // if (instance && container && container.firstChild) { // Check if container still exists
+            //      try {
+            //          while (container.firstChild) {
+            //              container.removeChild(container.firstChild);
+            //          }
+            //      } catch (unmountError) {
+            //          console.warn("Error during QR unmount cleanup:", unmountError);
+            //      }
+            // }
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [options, qrType, inputDataState, toast]);
+  }, [options, qrType, inputDataState, toast]); // Remove qrCodeInstance
 
 
    // --- History Management ---
@@ -806,19 +782,6 @@ export default function QrCodeGenerator() {
      } else {
           removeLogo(); // Clear logo if none in history item or original URL missing
      }
-
-      // Reset Audio/Image previews if loading a different type
-     if (item.type !== 'audio-image') {
-         setAudioFile(null);
-         setImageFile(null);
-         setAudioPreviewUrl(null);
-         setImagePreviewUrl(null);
-     } else {
-         // Restore previews if they exist in the data (might be base64)
-         setAudioPreviewUrl(item.data.audioUrl || null);
-         setImagePreviewUrl(item.data.imageUrl || null);
-     }
-
 
      setQrLabel(item.label || '');
      setExpiryDate(item.data.expiryDate ? new Date(item.data.expiryDate) : undefined);
@@ -1161,121 +1124,6 @@ export default function QrCodeGenerator() {
   }, [qrCodeInstance, options, fileExtension, qrType, generateQrData, isQrGenerated, expiryDate, qrLabel, toast, originalLogoUrl]);
 
 
-// --- Audio/Image Combo Handlers ---
- const handleAudioUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-         if (!['audio/mpeg', 'audio/wav', 'audio/ogg', 'audio/mp4', 'audio/aac'].includes(file.type)) {
-            toast({ variant: "destructive", title: "Invalid Audio Type", description: "Please upload MP3, WAV, OGG, MP4, or AAC audio." });
-            return;
-        }
-        if (file.size > 5 * 1024 * 1024) { // 5MB limit
-            toast({ variant: "destructive", title: "File Too Large", description: "Audio file should be less than 5MB." });
-            return;
-        }
-        setAudioFile(file);
-        const reader = new FileReader();
-        reader.onloadend = () => {
-            const audioDataUrl = reader.result as string;
-            setAudioPreviewUrl(audioDataUrl);
-            setInputDataState(prev => ({ ...prev, audioUrl: audioDataUrl }));
-        };
-        reader.readAsDataURL(file);
-    }
- };
-
- const handleImageUploadForGift = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-        if (!['image/png', 'image/jpeg', 'image/gif', 'image/webp'].includes(file.type)) {
-            toast({ variant: "destructive", title: "Invalid Image Type", description: "Please upload PNG, JPG, GIF, or WEBP." });
-            return;
-        }
-         if (file.size > 2 * 1024 * 1024) { // 2MB limit
-            toast({ variant: "destructive", title: "File Too Large", description: "Image should be less than 2MB." });
-            return;
-        }
-        setImageFile(file);
-        const reader = new FileReader();
-        reader.onloadend = () => {
-            const imageDataUrl = reader.result as string;
-            setImagePreviewUrl(imageDataUrl);
-            setInputDataState(prev => ({ ...prev, imageUrl: imageDataUrl }));
-        };
-        reader.readAsDataURL(file);
-    }
- };
-
-
-const startRecording = async () => {
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        toast({ variant: "destructive", title: "Unsupported", description: "Audio recording is not supported by your browser." });
-        return;
-    }
-    try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        mediaRecorderRef.current = new MediaRecorder(stream);
-        audioChunksRef.current = [];
-
-        mediaRecorderRef.current.ondataavailable = (event) => {
-            audioChunksRef.current.push(event.data);
-        };
-
-        mediaRecorderRef.current.onstop = () => {
-            const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/wav' }); // Use WAV for broader compatibility
-            const audioUrl = URL.createObjectURL(audioBlob);
-            setAudioPreviewUrl(audioUrl);
-            // Convert Blob to Data URL for storing in inputDataState (can be large!)
-            const reader = new FileReader();
-            reader.onloadend = () => {
-                setInputDataState(prev => ({ ...prev, audioUrl: reader.result as string }));
-            }
-            reader.readAsDataURL(audioBlob);
-            // Clean up stream tracks
-            stream.getTracks().forEach(track => track.stop());
-        };
-
-        mediaRecorderRef.current.start();
-        setIsRecording(true);
-        toast({ title: "Recording Started", description: "Click 'Stop Recording' when finished." });
-    } catch (err) {
-        console.error("Error starting recording:", err);
-        toast({ variant: "destructive", title: "Recording Error", description: "Could not access microphone. Please check permissions." });
-    }
-};
-
-const stopRecording = () => {
-    if (mediaRecorderRef.current && isRecording) {
-        mediaRecorderRef.current.stop();
-        setIsRecording(false);
-        toast({ title: "Recording Stopped", description: "Audio captured." });
-    }
-};
-
- const triggerAudioUpload = () => audioInputRef.current?.click();
- const triggerImageUploadForGift = () => imageInputRef.current?.click();
-
- const removeAudio = () => {
-     setAudioFile(null);
-     setAudioPreviewUrl(null);
-     if (audioInputRef.current) audioInputRef.current.value = '';
-     setInputDataState(prev => {
-         const { audioUrl, ...rest } = prev;
-         return rest;
-     });
- };
-
- const removeImageForGift = () => {
-     setImageFile(null);
-     setImagePreviewUrl(null);
-     if (imageInputRef.current) imageInputRef.current.value = '';
-     setInputDataState(prev => {
-         const { imageUrl, ...rest } = prev;
-         return rest;
-     });
- };
-
-
   // --- Render Dynamic Inputs ---
   const renderInputs = () => {
     const currentTypeInfo = qrTypeOptions.find(opt => opt.value === qrType);
@@ -1547,73 +1395,7 @@ const stopRecording = () => {
                                     <p className="text-xs text-muted-foreground">* UPI ID and Amount are required.</p>
                                 </div>
                             );
-                         case 'audio-image':
-                            return (
-                                <div className="space-y-6">
-                                    {/* Image Upload */}
-                                    <div className="space-y-2">
-                                        <Label htmlFor="gift-image">Upload Image *</Label>
-                                         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
-                                            <Button variant="outline" onClick={triggerImageUploadForGift} className="w-full sm:w-auto flex-grow justify-start text-left font-normal">
-                                                <Upload className="mr-2 h-4 w-4" />
-                                                {imagePreviewUrl ? "Change Image" : "Upload Image (PNG, JPG, WEBP...)"}
-                                            </Button>
-                                            <Input ref={imageInputRef} id="gift-image" type="file" accept="image/png, image/jpeg, image/gif, image/webp" onChange={handleImageUploadForGift} className="hidden" />
-                                            {imagePreviewUrl && (
-                                                <div className='flex items-center gap-2'>
-                                                    <img src={imagePreviewUrl} alt="Image Preview" className="h-10 w-10 rounded object-contain border bg-white" />
-                                                    <Button variant="ghost" size="icon" onClick={removeImageForGift} aria-label="Remove image">
-                                                        <Trash2 className="h-4 w-4 text-destructive" />
-                                                    </Button>
-                                                </div>
-                                            )}
-                                        </div>
-                                        <p className="text-xs text-muted-foreground">Image for the gift card page. Max 2MB.</p>
-                                    </div>
 
-                                    {/* Audio Section */}
-                                    <div className="space-y-2">
-                                        <Label htmlFor="gift-audio">Upload or Record Audio *</Label>
-                                         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
-                                            <Button variant="outline" onClick={triggerAudioUpload} className="w-full sm:w-auto flex-grow justify-start text-left font-normal">
-                                                <FileAudio className="mr-2 h-4 w-4" />
-                                                {audioPreviewUrl ? "Change Audio" : "Upload Audio (MP3, WAV...)"}
-                                            </Button>
-                                             <Input ref={audioInputRef} id="gift-audio" type="file" accept="audio/mpeg, audio/wav, audio/ogg, audio/mp4, audio/aac" onChange={handleAudioUpload} className="hidden" />
-                                            {audioPreviewUrl && (
-                                                 <Button variant="ghost" size="icon" onClick={removeAudio} aria-label="Remove audio" className='ml-auto'>
-                                                     <Trash2 className="h-4 w-4 text-destructive" />
-                                                 </Button>
-                                            )}
-                                        </div>
-                                        <p className="text-xs text-muted-foreground">Audio message. Max 5MB.</p>
-
-                                        {/* Record Button */}
-                                         <div className="flex items-center gap-2 pt-2">
-                                             <Button
-                                                variant={isRecording ? "destructive" : "secondary"}
-                                                onClick={isRecording ? stopRecording : startRecording}
-                                                size="sm"
-                                            >
-                                                {isRecording ? <PauseCircle className="mr-2 h-4 w-4" /> : <Mic className="mr-2 h-4 w-4" />}
-                                                {isRecording ? 'Stop Recording' : 'Record Voice'}
-                                            </Button>
-                                            {isRecording && <span className="text-sm text-destructive animate-pulse">Recording...</span>}
-                                         </div>
-
-                                         {/* Audio Preview */}
-                                         {audioPreviewUrl && !isRecording && (
-                                            <div className="pt-2">
-                                                <Label>Audio Preview</Label>
-                                                <audio controls src={audioPreviewUrl} className="w-full mt-1">
-                                                    Your browser does not support the audio element.
-                                                </audio>
-                                            </div>
-                                        )}
-                                    </div>
-                                    <p className="text-xs text-muted-foreground">* Both Image and Audio are required.</p>
-                                </div>
-                            );
                         default:
                             return <p className="text-center text-muted-foreground">Select a QR code type to begin.</p>;
                     }
@@ -1644,7 +1426,7 @@ const stopRecording = () => {
                 {/* Content Tab */}
                 <TabsContent value="content" className="pt-6 space-y-6">
                     {/* Accordion for Content, Styling, Logo, Extras */}
-                    <Accordion type="multiple" collapsible defaultValue={["content-item", "styling-item"]}>
+                    <Accordion type="multiple" collapsible className="w-full" defaultValue={["content-item", "styling-item"]}>
                          {/* Step 1: Content */}
                         <AccordionItem value="content-item">
                              <AccordionTrigger className="text-lg font-semibold">
@@ -1662,8 +1444,6 @@ const stopRecording = () => {
                                             setQrLabel('');
                                             // Reset specific fields for certain types
                                             removeLogo(); // Clear logo when type changes
-                                            removeAudio();
-                                            removeImageForGift();
                                              if (value === 'url') {
                                                  setInputDataState({ url: '' });
                                              }
@@ -2139,7 +1919,7 @@ const stopRecording = () => {
             <Button onClick={saveToHistory} className="w-full" variant="secondary" disabled={!isQrGenerated}>
                  <Save className="mr-2 h-4 w-4" /> Save to History
             </Button>
-            <p className="text-xs text-muted-foreground text-center px-4">History will only record manually saved QR codes. Unsaved QR codes will not appear.</p>
+             <p className="text-xs text-muted-foreground text-center px-4">History will only record manually saved QR codes. Unsaved QR codes will not appear.</p>
           </CardContent>
            <CardFooter>
               <Button onClick={onDownloadClick} className="w-full" disabled={!isQrGenerated}>
