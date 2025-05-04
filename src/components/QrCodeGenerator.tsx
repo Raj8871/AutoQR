@@ -23,6 +23,12 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { logFirebaseEvent } from '@/lib/firebase'; // Import logFirebaseEvent
+import { z } from 'zod';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import * as Papa from 'papaparse';
+import JSZip from 'jszip';
+
 
 // --- Types ---
 
@@ -719,7 +725,6 @@ export function QrCodeGenerator() {
 
  const handleLogoOpacityChange = (value: number[]) => {
      const opacityPercent = value[0];
-     setLogoOpacity(opacityPercent);
       if (originalLogoUrl) {
          applyLogoShapeAndOpacity(originalLogoUrl, logoShape, opacityPercent / 100);
      }
@@ -1152,6 +1157,120 @@ export function QrCodeGenerator() {
     );
   };
 
+  // --- Bulk QR Code Generation ---
+
+  const [bulkQrCodes, setBulkQrCodes] = useState<string[]>([]);
+  const [csvFile, setCsvFile] = useState<File | null>(null);
+	const [csvData, setCsvData] = useState<any[]>([]);
+
+
+  const bulkQrCodeSchema = z.object({
+		type: z.enum(['url', 'text', 'email', 'phone', 'whatsapp', 'sms', 'location', 'event', 'wifi', 'upi'] as [string, ...string[]]),
+		data: z.string().min(1),
+	  });
+
+
+	const { register, handleSubmit, formState: { errors }, reset } = useForm<z.infer<typeof bulkQrCodeSchema>>({
+		resolver: zodResolver(bulkQrCodeSchema),
+		defaultValues: {
+		  type: 'url',
+		  data: '',
+		},
+	  });
+
+
+	  const handleCsvUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+		const file = e.target.files?.[0];
+		if (!file) return;
+
+		if (file.type !== 'text/csv' && file.type !== 'application/vnd.ms-excel') {
+		  toast({ variant: 'destructive', title: 'Invalid File Type', description: 'Please upload a CSV file.' });
+		  return;
+		}
+
+		setCsvFile(file);
+
+		Papa.parse(file, {
+		  header: true, // Use first row as header
+		  skipEmptyLines: true,
+		  complete: (results) => {
+			setCsvData(results.data);
+		  },
+		  error: () => {
+			toast({ variant: 'destructive', title: 'CSV Parsing Error', description: 'Could not parse CSV file.' });
+		  },
+		});
+	  };
+
+	  const handleBulkDownload = async () => {
+		if (bulkQrCodes.length === 0) {
+		  toast({ variant: 'destructive', title: 'No QR Codes to Download', description: 'Please generate QR codes first.' });
+		  return;
+		}
+
+		const zip = new JSZip();
+
+		bulkQrCodes.forEach((qrCode, index) => {
+		  // Assuming qrCode is an SVG or PNG data URL
+		  const filename = `qr-code-${index + 1}.${fileExtension}`;
+		  const base64Data = qrCode.split(',')[1]; // Remove data:image/png;base64, from the beginning
+		  zip.file(filename, base64Data, { base64: true });
+		});
+
+		const zipFilename = 'qr-codes.zip';
+		const content = await zip.generateAsync({ type: 'blob' });
+
+		const url = window.URL.createObjectURL(content);
+		const link = document.createElement('a');
+		link.href = url;
+		link.download = zipFilename;
+		link.click();
+		window.URL.revokeObjectURL(url);
+
+		toast({ title: 'Download Started', description: 'Downloading QR codes as a zip file.' });
+	  };
+
+
+	  const generateBulkQrCodes = () => {
+		if (csvData.length === 0) {
+		  toast({ variant: 'destructive', title: 'No CSV Data', description: 'Please upload a CSV file.' });
+		  return;
+		}
+
+		const generatedCodes: string[] = [];
+		csvData.forEach((row, index) => {
+		  try {
+			const validatedData = bulkQrCodeSchema.parse(row);
+			const qrData = generateQrDataString(validatedData.type, { [validatedData.type]: validatedData.data }, toast);
+
+			if (qrData) {
+			  // Generate QR code for each row in CSV
+			  const qrOptions: QRCodeStylingOptions = {
+				...options,
+				data: qrData,
+			  };
+
+			  const qrCode = new QRCodeStyling(qrOptions);
+			  qrCode.getRawDataURL().then((url) => {
+				generatedCodes.push(url);
+				if (index === csvData.length - 1) {
+				  // After processing the last row
+				  setBulkQrCodes([...generatedCodes]); // Update state to trigger re-render
+				  toast({ title: 'QR Codes Generated', description: `Generated ${csvData.length} QR codes from CSV.` });
+				}
+			  });
+			} else {
+			  console.warn(`Could not generate QR code for row ${index + 1}. Skipping.`);
+			}
+		  } catch (error) {
+			console.error('Validation error:', error);
+			toast({ variant: 'destructive', title: 'Validation Error', description: `Error validating row ${index + 1} in CSV file.` });
+		  }
+		});
+
+		setBulkQrCodes(generatedCodes);
+	  };
+
 
 
   // --- Main Render ---
@@ -1170,6 +1289,7 @@ export function QrCodeGenerator() {
                  {/* Use full width tabs on small screens */}
                 <TabsList className="grid w-full grid-cols-1 mb-4"> {/* Only one tab now */}
                     <TabsTrigger value="content"><Settings2 className="inline-block mr-1 h-4 w-4" /> Options</TabsTrigger>
+					<TabsTrigger value="bulk"><Upload className="inline-block mr-1 h-4 w-4" /> Bulk Generate</TabsTrigger>
                     {/* Removed History Trigger */}
                 </TabsList>
 
@@ -1394,6 +1514,27 @@ export function QrCodeGenerator() {
                     </Accordion>
 
                 </TabsContent>
+
+				{/* Bulk Generate Tab */}
+				<TabsContent value="bulk" className="pt-6 space-y-6">
+					<div className="space-y-4">
+						<Label htmlFor="csv-upload">Upload CSV File</Label>
+						<Input id="csv-upload" type="file" accept=".csv, .xlsx" onChange={handleCsvUpload} />
+						<p className="text-xs text-muted-foreground">Upload a CSV file with columns 'type' and 'data' for bulk QR code generation.</p>
+					</div>
+					<Button onClick={generateBulkQrCodes}>Generate Bulk QR Codes</Button>
+
+					<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 pt-4">
+						{bulkQrCodes.map((qrCode, index) => (
+							<div key={index} className="border rounded-lg overflow-hidden shadow-md">
+								<img src={qrCode} alt={`QR Code ${index + 1}`} className="w-full h-auto" />
+							</div>
+						))}
+					</div>
+					{bulkQrCodes.length > 0 && (
+						<Button onClick={handleBulkDownload}>Download All as Zip</Button>
+					)}
+				</TabsContent>
 
                  {/* History Tab Removed */}
 
