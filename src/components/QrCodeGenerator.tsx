@@ -1,7 +1,8 @@
+
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import QRCodeStyling, { type Options as QRCodeStylingOptions, type FileExtension, type DotType, type CornerSquareType, type CornerDotType, Extension } from 'qr-code-styling';
+import QRCodeStyling, { type Options as QRCodeStylingOptions, type FileExtension, type DotType, type CornerSquareType, type CornerDotType, Extension, ErrorCorrectionLevel } from 'qr-code-styling';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -16,7 +17,7 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/
 import { Checkbox } from '@/components/ui/checkbox';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import {
-    Download, Image as ImageIcon, Link as LinkIcon, Phone, Mail, MessageSquare, MapPin, Calendar as CalendarIcon, Settings2, Palette, Clock, Wifi, Upload, Check, Trash2, Info, Eye, EyeOff, QrCode as QrCodeIcon, RefreshCcw, Star, Sparkles, Shapes, CreditCard, Copy, Pencil, StarIcon, Share2, X, QrCode, History, Gift, Music, User, Lock, Mic, PlayCircle, PauseCircle, FileAudio, Save, DownloadCloud, Zap, Paintbrush, ShieldCheck, Contact, FileText, ExternalLink, Search // Added Search icon
+    Download, Image as ImageIcon, Link as LinkIcon, Phone, Mail, MessageSquare, MapPin, Calendar as CalendarIcon, Settings2, Palette, Clock, Wifi, Upload, Check, Trash2, Info, Eye, EyeOff, QrCode as QrCodeIcon, RefreshCcw, Star, Sparkles, Shapes, CreditCard, Copy, Pencil, StarIcon, Share2, X, QrCode, History, Gift, Music, User, Lock, Mic, PlayCircle, PauseCircle, FileAudio, Save, DownloadCloud, Zap, Paintbrush, ShieldCheck, Contact, FileText, ExternalLink, Search, Settings, ShieldQuestion // Added Search, Settings, ShieldQuestion icons
 } from 'lucide-react';
 import { format } from "date-fns";
 import { cn } from '@/lib/utils';
@@ -64,6 +65,7 @@ const dotTypes: DotType[] = ['square', 'dots', 'rounded', 'classy', 'classy-roun
 const cornerSquareTypes: CornerSquareType[] = ['square', 'extra-rounded', 'dot'];
 const cornerDotTypes: CornerDotType[] = ['square', 'dot'];
 const wifiEncryptionTypes = ['WPA/WPA2', 'WEP', 'None'];
+const errorCorrectionLevels: ErrorCorrectionLevel[] = ['L', 'M', 'Q', 'H'];
 
 
 // --- Default Options ---
@@ -73,6 +75,7 @@ const defaultOptions: QRCodeStylingOptions = {
   type: 'svg',
   data: '', // Default empty data
   image: '',
+  margin: 10, // Default margin around QR code
   dotsOptions: {
     color: '#008080', // Teal accent
     type: 'rounded',
@@ -95,7 +98,7 @@ const defaultOptions: QRCodeStylingOptions = {
     color: '#008080',
   },
   qrOptions: {
-    errorCorrectionLevel: 'H',
+    errorCorrectionLevel: 'H', // High error correction by default
   },
 };
 
@@ -484,6 +487,7 @@ const generateQrDataString = (type: QrType, data: Record<string, any>, toastFn: 
              description: `Input data is too long (${targetData.length} characters) and exceeds the QR code limit (~${MAX_DATA_LENGTH_FAIL} chars). Please shorten it, use smaller files, or use a service that generates shorter links. QR Generation might fail.`,
              duration: 10000
          });
+          return ''; // Prevent extremely long data from being used
      } else if (targetData.length > MAX_DATA_LENGTH_WARN) {
          console.warn(`QR data for type ${type} is very long (${targetData.length} chars). Scanability might be reduced.`);
          toastFn({
@@ -523,6 +527,8 @@ const QrCodeGenerator = () => { // Changed to default export
   const [expiryDate, setExpiryDate] = useState<Date | undefined>(undefined);
   const [expiryTime, setExpiryTime] = useState<string>("00:00");
   const [wifiPasswordVisible, setWifiPasswordVisible] = useState<boolean>(false);
+  const [qrMargin, setQrMargin] = useState<number>(defaultOptions.margin ?? 10); // State for margin
+  const [errorCorrection, setErrorCorrection] = useState<ErrorCorrectionLevel>(defaultOptions.qrOptions?.errorCorrectionLevel ?? 'H'); // State for EC level
 
     // Audio/Image Combo State
   const [audioFile, setAudioFile] = useState<File | null>(null);
@@ -605,17 +611,13 @@ const QrCodeGenerator = () => { // Changed to default export
       const width = typeof options.width === 'number' ? options.width : defaultOptions.width!;
       const height = typeof options.height === 'number' ? options.height : defaultOptions.height!;
 
-      const qrOptions = { ...options, data: qrData, width, height };
+      const qrOptions = { ...options, data: qrData, width, height, margin: qrMargin, qrOptions: { errorCorrectionLevel: errorCorrection } }; // Use state for margin & EC
 
 
       const updateQrCode = async () => {
            try {
                // Clear previous content only if an instance exists and the container is not empty
                 if (instance && container && container.firstChild) {
-                    // Check if the first child belongs to the current QR instance before removing
-                    // This requires a reliable way to associate the DOM element with the instance,
-                    // which qr-code-styling doesn't directly provide.
-                    // A safer approach is to always clear and re-append if necessary.
                     while (container.firstChild) {
                         container.removeChild(container.firstChild);
                     }
@@ -663,7 +665,7 @@ const QrCodeGenerator = () => { // Changed to default export
            } catch (error: any) {
                 console.error("Error creating/updating QR code instance:", error);
                  if (error?.message?.includes("overflow")) {
-                    toast({ variant: "destructive", title: "QR Generation Error", description: `Data is too long for the QR code standard. Please shorten input or use smaller files. (${error.message})`, duration: 7000 });
+                    toast({ variant: "destructive", title: "QR Generation Error", description: `Data is too long for the QR code standard (${error.message}). Please shorten input or use smaller files.`, duration: 7000 });
                 } else {
                      toast({ variant: "destructive", title: "QR Generation Error", description: `Could not create/update QR code: ${(error as Error).message}` });
                 }
@@ -687,18 +689,9 @@ const QrCodeGenerator = () => { // Changed to default export
 
        return () => {
             clearTimeout(debounceTimeout);
-            // Clean up instance when component unmounts or dependencies change drastically
-            // This might still have race conditions, careful testing needed.
-             if (qrCodeInstance && qrCodeRef.current && qrCodeRef.current.contains(qrCodeInstance._canvas?._element)) {
-                try {
-                     // qrCodeInstance.current?._canvas?._element?.remove(); // Attempt removal
-                } catch (e) {
-                     console.warn("Ignoring QR instance cleanup error:", e);
-                }
-            }
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [options, qrType, inputDataState, toast]); // Re-added qrCodeInstance as dependency, needs careful checking
+  }, [options, qrType, inputDataState, toast, qrMargin, errorCorrection]); // Added qrMargin, errorCorrection dependencies
 
 
    // --- History Management ---
@@ -709,20 +702,25 @@ const QrCodeGenerator = () => { // Changed to default export
          return;
      }
 
+     // Create a clean options object for saving, excluding potentially large data
+     const optionsToSave: Partial<QRCodeStylingOptions> = { ...options };
+     delete optionsToSave.data; // Remove data field
+
      const newItem: HistoryItem = {
        id: Date.now().toString(),
        type: qrType,
-       data: { ...inputDataState },
-       options: { ...options, data: '' }, // Clear data for storage efficiency
+       data: { ...inputDataState }, // Store the raw input data
+       options: optionsToSave as QRCodeStylingOptions, // Store the styling options without the data
        timestamp: Date.now(),
        label: qrLabel || `${qrTypeOptions.find(opt => opt.value === qrType)?.label || qrType} - ${format(new Date(), 'PP p')}`, // Use type label if no custom label
-       qrCodeSvgDataUrl: qrCodeSvgDataUrl,
+       qrCodeSvgDataUrl: qrCodeSvgDataUrl, // Store the preview
      };
 
      const isDuplicate = history.some(item =>
          item.type === newItem.type &&
          JSON.stringify(item.data) === JSON.stringify(newItem.data) &&
-         JSON.stringify(item.options) === JSON.stringify(newItem.options)
+         JSON.stringify(item.options) === JSON.stringify(newItem.options) && // Compare options too
+         item.label === newItem.label // Also check label if it matters for duplication
       );
 
      if (isDuplicate) {
@@ -776,7 +774,7 @@ const QrCodeGenerator = () => { // Changed to default export
               }
           }));
      }
-  }, [logoSize, options.imageOptions, toast]); // Removed 'options' dependency, kept imageOptions
+  }, [logoSize, options.imageOptions, toast]);
 
 
  const loadFromHistory = useCallback((item: HistoryItem) => {
@@ -789,7 +787,19 @@ const QrCodeGenerator = () => { // Changed to default export
      const regeneratedQrData = generateQrDataString(item.type, item.data, toast);
      const restoredOptions = { ...item.options, data: regeneratedQrData }; // Use regenerated data
 
-     setOptions(restoredOptions); // Set options AFTER regenerating data
+      setOptions(prev => ({
+          ...prev,
+          ...restoredOptions, // Apply loaded options
+           // Ensure qrOptions are set from the history item or defaults
+           qrOptions: {
+               errorCorrectionLevel: item.options.qrOptions?.errorCorrectionLevel ?? defaultOptions.qrOptions!.errorCorrectionLevel,
+               // Add other qrOptions if they were saved
+            },
+            margin: item.options.margin ?? defaultOptions.margin // Restore margin
+      }));
+      // Update local state for controls based on loaded options
+      setErrorCorrection(item.options.qrOptions?.errorCorrectionLevel ?? defaultOptions.qrOptions!.errorCorrectionLevel);
+      setQrMargin(item.options.margin ?? defaultOptions.margin);
 
      if (item.options.image && item.data.logoUrl) { // Check for original logo URL in data
          const originalSavedLogo = item.data.logoUrl;
@@ -1029,6 +1039,21 @@ const QrCodeGenerator = () => { // Changed to default export
       setInputDataState(prev => ({ ...prev, hideBackgroundDots: hide })); // Store for history
  }
 
+ // Handler for Error Correction Level change
+  const handleErrorCorrectionChange = (value: ErrorCorrectionLevel) => {
+      setErrorCorrection(value);
+      // Update options directly - no need for setOptions if only EC changes
+  };
+
+ // Handler for Margin change
+  const handleMarginChange = (value: number[]) => {
+      const margin = value[0];
+      if (margin >= 0 && margin <= 50) {
+          setQrMargin(margin);
+          // Update options directly - no need for setOptions if only margin changes
+      }
+  };
+
 
  const handleLogoUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -1147,6 +1172,8 @@ const QrCodeGenerator = () => { // Changed to default export
           type: fileExtension === 'svg' ? 'svg' : 'canvas',
           width: downloadWidth,
           height: downloadHeight,
+          margin: qrMargin, // Use current margin state
+          qrOptions: { errorCorrectionLevel: errorCorrection } // Use current EC state
       };
 
       const downloadInstance = new QRCodeStyling(downloadOptions);
@@ -1160,7 +1187,7 @@ const QrCodeGenerator = () => { // Changed to default export
           console.error("Error downloading QR code:", error);
           toast({ variant: "destructive", title: "Download Failed", description: "Could not download the QR code. Please try again." });
       }
-  }, [qrCodeInstance, options, fileExtension, qrType, generateQrData, isQrGenerated, expiryDate, qrLabel, toast, originalLogoUrl]);
+  }, [qrCodeInstance, options, fileExtension, qrType, generateQrData, isQrGenerated, expiryDate, qrLabel, toast, originalLogoUrl, qrMargin, errorCorrection]); // Added qrMargin, errorCorrection
 
 
 // --- Audio/Image Combo Handlers ---
@@ -1629,8 +1656,6 @@ const stopRecording = () => {
 
   // --- Main Render ---
   return (
-    <>
-    {/* Removed <FirebaseAnalyticsLogger /> */}
     <div className="w-full max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-8 px-4 py-6">
         {/* Options Panel */}
         <Card className="lg:col-span-2 order-2 lg:order-1 animate-fade-in">
@@ -1648,7 +1673,7 @@ const stopRecording = () => {
                 {/* Content Tab */}
                 <TabsContent value="content" className="pt-6 space-y-6">
                     {/* Accordion for Content, Styling, Logo, Extras */}
-                    <Accordion type="multiple" collapsible={"true"} className="w-full" defaultValue={["content-item", "styling-item"]}>
+                    <Accordion type="multiple" collapsible className="w-full" defaultValue={["content-item", "styling-item"]}>
                          {/* Step 1: Content */}
                         <AccordionItem value="content-item">
                              <AccordionTrigger className="text-lg font-semibold">
@@ -1753,6 +1778,15 @@ const stopRecording = () => {
                                      </div>
                                      <p className="text-xs text-muted-foreground">Adjusts the preview size. Download size depends on format.</p>
                                 </div>
+                                {/* Margin Slider */}
+                                <div className="space-y-3 pt-4 border-t">
+                                    <Label htmlFor="qr-margin">Margin ({qrMargin}px)</Label>
+                                    <div className="flex items-center gap-2">
+                                        <Slider id="qr-margin" value={[qrMargin]} min={0} max={50} step={1} onValueChange={handleMarginChange} aria-label="QR Code Margin Slider"/>
+                                        <span className='text-sm w-10 text-right'>{qrMargin} px</span>
+                                    </div>
+                                    <p className="text-xs text-muted-foreground">Space around the QR code. Default: 10px.</p>
+                                </div>
                             </AccordionContent>
                         </AccordionItem>
 
@@ -1828,10 +1862,10 @@ const stopRecording = () => {
                              </AccordionContent>
                         </AccordionItem>
 
-                        {/* Step 4: Extras */}
+                        {/* Step 4: Advanced Settings & Extras */}
                          <AccordionItem value="extras-item">
                              <AccordionTrigger className="text-lg font-semibold">
-                                <span className="flex items-center gap-2"><Sparkles className="h-5 w-5"/> 4. Extras</span>
+                                <span className="flex items-center gap-2"><Settings className="h-5 w-5"/> 4. Advanced & Extras</span>
                             </AccordionTrigger>
                              <AccordionContent className="pt-4 space-y-6">
                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
@@ -1842,8 +1876,36 @@ const stopRecording = () => {
                                          <p className="text-xs text-muted-foreground">Helps identify this QR in your history.</p>
                                      </div>
 
+                                     {/* Error Correction Level */}
+                                     <div className="space-y-2">
+                                        <Label htmlFor="error-correction">Error Correction Level</Label>
+                                        <div className="flex items-center gap-2">
+                                            <Select onValueChange={handleErrorCorrectionChange} value={errorCorrection}>
+                                                <SelectTrigger id="error-correction" className="w-full">
+                                                    <SelectValue />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    {errorCorrectionLevels.map(level => (
+                                                        <SelectItem key={level} value={level}>
+                                                            {level} {level === 'L' && '(Low ~7%)'} {level === 'M' && '(Medium ~15%)'} {level === 'Q' && '(Quartile ~25%)'} {level === 'H' && '(High ~30%)'}
+                                                        </SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                            <TooltipProvider>
+                                                <Tooltip>
+                                                    <TooltipTrigger asChild><ShieldQuestion className="h-4 w-4 text-muted-foreground cursor-help" /></TooltipTrigger>
+                                                    <TooltipContent side="top" className="max-w-xs">
+                                                        <p>Higher levels allow the QR code to be scanned even if partially damaged or obstructed, but increase complexity. High (H) is recommended for most cases, especially with logos.</p>
+                                                    </TooltipContent>
+                                                </Tooltip>
+                                             </TooltipProvider>
+                                        </div>
+                                        <p className="text-xs text-muted-foreground">Determines scanability if damaged. Default: High.</p>
+                                    </div>
+
                                       {/* Expiry Reminder */}
-                                     <div className='space-y-2'>
+                                     <div className='space-y-2 sm:col-span-2'> {/* Make expiry full width on small screens */}
                                         <Label>Expiry Reminder (Visual Only)</Label>
                                         <p className="text-xs text-muted-foreground pb-1">Mark the QR code with an intended expiry. <strong className='text-foreground/80'>Actual expiration requires a backend service.</strong></p>
                                         <div className="flex flex-wrap gap-2 pb-2">
@@ -2154,8 +2216,8 @@ const stopRecording = () => {
            </CardFooter>
         </Card>
     </div>
-    </>
   );
 }
 
 export default QrCodeGenerator; // Default export
+
