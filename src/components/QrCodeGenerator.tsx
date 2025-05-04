@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
@@ -15,7 +16,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
-    Download, Image as ImageIcon, Link as LinkIcon, Phone, Mail, MessageSquare, MapPin, Calendar as CalendarIcon, Settings2, Palette, Clock, Wifi, Upload, Check, Trash2, Info, Eye, EyeOff, QrCode as QrCodeIcon, RefreshCcw, Star, Sparkles, Shapes, CreditCard, Copy, Pencil, StarIcon, Share2, X, QrCode, History, Gift, Music, User, Lock, Mic, PlayCircle, PauseCircle, FileAudio, Save, DownloadCloud, Zap, Paintbrush, ShieldCheck, Contact // Added Mic, PlayCircle, PauseCircle, FileAudio, Save
+    Download, Image as ImageIcon, Link as LinkIcon, Phone, Mail, MessageSquare, MapPin, Calendar as CalendarIcon, Settings2, Palette, Clock, Wifi, Upload, Check, Trash2, Info, Eye, EyeOff, QrCode as QrCodeIcon, RefreshCcw, Star, Sparkles, Shapes, CreditCard, Copy, Pencil, StarIcon, Share2, X, QrCode, History, Gift, Music, User, Lock, Mic, PlayCircle, PauseCircle, FileAudio, Save, DownloadCloud, Zap, Paintbrush, ShieldCheck, Contact, FileText, FileUp, Search // Added Mic, PlayCircle, PauseCircle, FileAudio, Save
 } from 'lucide-react';
 import { format } from "date-fns";
 import { cn } from '@/lib/utils';
@@ -32,7 +33,7 @@ import { z } from 'zod';
 // --- Types ---
 
 // Define allowed QR types
-type QrType = 'url' | 'text' | 'email' | 'phone' | 'whatsapp' | 'sms' | 'location' | 'event' | 'wifi' | 'vcard' | 'upi';
+type QrType = 'url' | 'text' | 'email' | 'phone' | 'whatsapp' | 'sms' | 'location' | 'event' | 'wifi' | 'vcard' | 'upi' ;
 
 // Define structure for history items
 interface HistoryItem {
@@ -488,7 +489,7 @@ const generateQrDataString = (type: QrType, data: Record<string, any>, toastFn: 
 
 
 // --- QrCodeGenerator Component ---
-export function QrCodeGenerator() { // Changed to named export
+const QrCodeGenerator = () => {
   const { toast } = useToast(); // Get toast instance
 
   // Core QR State
@@ -517,6 +518,8 @@ export function QrCodeGenerator() { // Changed to named export
   const [showHistory, setShowHistory] = useState(false); // State to control history panel visibility
   const [editingLabelId, setEditingLabelId] = useState<string | null>(null);
   const [editingLabelValue, setEditingLabelValue] = useState<string>('');
+  const [searchTerm, setSearchTerm] = useState<string>(''); // State for search term
+  const [filteredHistory, setFilteredHistory] = useState<HistoryItem[]>([]); // State for filtered history
 
 
   // Bulk QR State
@@ -843,9 +846,19 @@ export function QrCodeGenerator() { // Changed to named export
  }, [toast]);
 
 
+ // --- Search/Filter History ---
+ useEffect(() => {
+   const lowerCaseSearchTerm = searchTerm.toLowerCase();
+   const filtered = history.filter(item =>
+       (item.label?.toLowerCase() || '').includes(lowerCaseSearchTerm) ||
+       item.type.toLowerCase().includes(lowerCaseSearchTerm) ||
+       JSON.stringify(item.data).toLowerCase().includes(lowerCaseSearchTerm)
+   );
+   setFilteredHistory(filtered);
+ }, [searchTerm, history]);
 
 
-  // --- Input Handlers ---
+ // --- Input Handlers ---
   const handleInputChange = (key: string, value: any) => {
     // Validation for numeric fields
     if ((key === 'latitude' || key === 'longitude' || key === 'upi_amount') && value && isNaN(Number(value))) {
@@ -1417,39 +1430,58 @@ export function QrCodeGenerator() { // Changed to named export
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (file.type !== 'text/csv' && !file.name.endsWith('.csv')) {
-      toast({ variant: 'destructive', title: 'Invalid File Type', description: 'Please upload a CSV file.' });
+    const allowedTypes = ['text/csv', 'application/pdf'];
+    const isCsv = file.type === 'text/csv' || file.name.endsWith('.csv');
+    const isPdf = file.type === 'application/pdf' || file.name.endsWith('.pdf');
+
+    if (!isCsv && !isPdf) {
+      toast({ variant: 'destructive', title: 'Invalid File Type', description: 'Please upload a CSV or PDF file.' });
       return;
     }
 
-    setCsvFile(file);
+    setCsvFile(file); // Store the file regardless of type for potential future PDF handling
 
-    Papa.parse(file, {
-      header: true,
-      skipEmptyLines: true,
-      complete: (results) => {
-         if (results.errors.length > 0) {
-             console.error("CSV Parsing Errors:", results.errors);
-             toast({ variant: 'destructive', title: 'CSV Parsing Error', description: `Error parsing row ${results.errors[0].row}: ${results.errors[0].message}` });
-             setCsvData([]); // Clear data on error
-         } else if (!results.data.length) {
-             toast({ variant: 'destructive', title: 'Empty CSV', description: 'The uploaded CSV file is empty or has no valid data.' });
+    if (isPdf) {
+      toast({
+        title: 'PDF Uploaded',
+        description: 'Note: Bulk generation currently only supports CSV data. PDF parsing is not yet implemented.',
+        variant: 'default', // Use default variant for informational toast
+        duration: 6000
+      });
+      setCsvData([]); // Clear data if it's a PDF
+      return; // Stop processing for PDF for now
+    }
+
+    // Only parse if it's a CSV
+    if (isCsv) {
+        Papa.parse(file, {
+          header: true,
+          skipEmptyLines: true,
+          complete: (results) => {
+             if (results.errors.length > 0) {
+                 console.error("CSV Parsing Errors:", results.errors);
+                 toast({ variant: 'destructive', title: 'CSV Parsing Error', description: `Error parsing row ${results.errors[0].row}: ${results.errors[0].message}` });
+                 setCsvData([]); // Clear data on error
+             } else if (!results.data.length) {
+                 toast({ variant: 'destructive', title: 'Empty CSV', description: 'The uploaded CSV file is empty or has no valid data.' });
+                 setCsvData([]);
+             } else if (!results.meta.fields || !results.meta.fields.includes('type') || !results.meta.fields.includes('data')) {
+                 toast({ variant: 'destructive', title: 'Invalid CSV Headers', description: "CSV must contain 'type' and 'data' columns." });
+                 setCsvData([]);
+             } else {
+                setCsvData(results.data as any[]); // Type assertion
+                toast({ title: 'CSV Uploaded', description: `Found ${results.data.length} rows. Ready to generate.` });
+             }
+          },
+          error: (error) => {
+             console.error("CSV Parsing Failed:", error);
+            toast({ variant: 'destructive', title: 'CSV Parsing Failed', description: 'Could not parse the CSV file.' });
              setCsvData([]);
-         } else if (!results.meta.fields || !results.meta.fields.includes('type') || !results.meta.fields.includes('data')) {
-             toast({ variant: 'destructive', title: 'Invalid CSV Headers', description: "CSV must contain 'type' and 'data' columns." });
-             setCsvData([]);
-         } else {
-            setCsvData(results.data as any[]); // Type assertion
-            toast({ title: 'CSV Uploaded', description: `Found ${results.data.length} rows. Ready to generate.` });
-         }
-      },
-      error: (error) => {
-         console.error("CSV Parsing Failed:", error);
-        toast({ variant: 'destructive', title: 'CSV Parsing Failed', description: 'Could not parse the CSV file.' });
-         setCsvData([]);
-      },
-    });
+          },
+        });
+    }
   };
+
 
   const handleBulkDownload = async () => {
     if (bulkQrCodes.length === 0) {
@@ -1575,7 +1607,7 @@ export function QrCodeGenerator() { // Changed to named export
 
     setBulkQrCodes(generatedCodes); // Update state with successfully generated codes
     if (successCount > 0) {
-         toast({ title: 'Bulk Generation Complete', description: `Generated ${successCount} QR codes. ${errorCount > 0 ? `${errorCount} rows failed.` : ''}` });
+         toast({ title: 'Bulk Generation Complete', description: `Generated ${successCount} QR codes. ${errorCount > 0 ? `${errorCount} failed.` : ''}` });
           logFirebaseEvent('bulk_qr_generation_completed', { success: successCount, failed: errorCount });
     } else if (errorCount > 0) {
          toast({ variant: 'destructive', title: 'Bulk Generation Failed', description: `Could not generate any QR codes. ${errorCount} rows failed.` });
@@ -1602,7 +1634,7 @@ export function QrCodeGenerator() { // Changed to named export
              <Tabs defaultValue="content" className="w-full">
                  <TabsList className="grid w-full grid-cols-2 mb-4"> {/* Adjusted grid cols */}
                     <TabsTrigger value="content"><Settings2 className="inline-block mr-1 h-4 w-4" /> Options</TabsTrigger>
-                    <TabsTrigger value="bulk"><Upload className="inline-block mr-1 h-4 w-4" /> Bulk Generate</TabsTrigger>
+                    <TabsTrigger value="bulk"><FileUp className="inline-block mr-1 h-4 w-4" /> Bulk Generate</TabsTrigger>
                 </TabsList>
 
                 {/* Content Tab */}
@@ -1834,22 +1866,37 @@ export function QrCodeGenerator() { // Changed to named export
                 {/* Bulk Generate Tab */}
                 <TabsContent value="bulk" className="pt-6 space-y-6">
                     <div className="space-y-4">
-                        <Label htmlFor="csv-upload">Upload CSV File</Label>
-                        <Input id="csv-upload" type="file" accept=".csv" onChange={handleCsvUpload} />
-                        <p className="text-xs text-muted-foreground">Upload a CSV file with columns 'type' and 'data' for bulk QR code generation. Complex types may require additional columns.</p>
-                        <Button onClick={generateBulkQrCodes} disabled={csvData.length === 0}>Generate Bulk QR Codes</Button>
+                        <Label htmlFor="csv-upload" className="flex items-center gap-2">
+                           <FileText className="h-4 w-4"/> Upload CSV or PDF File
+                        </Label>
+                        <Input
+                            id="csv-upload"
+                            type="file"
+                            accept=".csv, application/pdf" // Accept both CSV and PDF
+                            onChange={handleCsvUpload}
+                            className="file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"
+                        />
+                        <p className="text-xs text-muted-foreground">
+                            Upload a CSV file with columns 'type' and 'data' for bulk QR code generation.
+                            PDF upload is supported, but bulk generation from PDF is not yet implemented.
+                        </p>
+                        <Button onClick={generateBulkQrCodes} disabled={csvData.length === 0}>
+                            <Settings2 className="mr-2 h-4 w-4"/> Generate Bulk QR Codes (from CSV)
+                        </Button>
                     </div>
 
                     {bulkQrCodes.length > 0 && (
                         <div className="space-y-4 pt-4 border-t">
                              <h4 className="font-medium">Generated QR Codes ({bulkQrCodes.length})</h4>
-                             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                                {bulkQrCodes.map((qrCodeDataUrl, index) => (
-                                    <div key={index} className="border rounded-lg overflow-hidden shadow-sm bg-white p-1 aspect-square flex items-center justify-center">
-                                        <img src={qrCodeDataUrl} alt={`QR Code ${index + 1}`} className="w-full h-auto object-contain" />
-                                    </div>
-                                ))}
-                            </div>
+                             <ScrollArea className="h-72 w-full rounded-md border">
+                                 <div className="p-4 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                                    {bulkQrCodes.map((qrCodeDataUrl, index) => (
+                                        <div key={index} className="border rounded-lg overflow-hidden shadow-sm bg-white p-1 aspect-square flex items-center justify-center">
+                                            <img src={qrCodeDataUrl} alt={`QR Code ${index + 1}`} className="w-full h-auto object-contain" />
+                                        </div>
+                                    ))}
+                                </div>
+                             </ScrollArea>
                             <Button onClick={handleBulkDownload} className="w-full sm:w-auto">
                                 <Download className="mr-2 h-4 w-4" /> Download All as Zip
                              </Button>
@@ -1859,128 +1906,148 @@ export function QrCodeGenerator() { // Changed to named export
 
                  {/* History Dialog */}
                  <AlertDialog open={showHistory} onOpenChange={setShowHistory}>
-                     <AlertDialogContent className="max-w-3xl h-[80vh] flex flex-col">
+                     <AlertDialogContent className="max-w-4xl h-[85vh] flex flex-col"> {/* Increased size */}
                          <AlertDialogHeader>
                              <AlertDialogTitle className="flex justify-between items-center">
                                  Generation History ({history.length})
-                                 <AlertDialogCancel asChild>
-                                      <Button variant="ghost" size="icon" onClick={() => setShowHistory(false)}>
-                                          <X className="h-4 w-4" />
-                                          <span className="sr-only">Close History</span>
-                                      </Button>
-                                 </AlertDialogCancel>
+                                 <div className="flex items-center gap-2"> {/* Group search and close */}
+                                    {/* Search Input */}
+                                     <div className="relative flex-grow max-w-xs">
+                                        <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                                        <Input
+                                            type="search"
+                                            placeholder="Search label, type, or data..."
+                                            value={searchTerm}
+                                            onChange={(e) => setSearchTerm(e.target.value)}
+                                            className="pl-8 pr-4 py-2 h-9 text-sm" // Adjusted padding
+                                        />
+                                     </div>
+                                     <AlertDialogCancel asChild>
+                                          <Button variant="ghost" size="icon" onClick={() => setShowHistory(false)}>
+                                              <X className="h-4 w-4" />
+                                              <span className="sr-only">Close History</span>
+                                          </Button>
+                                     </AlertDialogCancel>
+                                 </div>
                               </AlertDialogTitle>
                              <AlertDialogDescription>
-                                Previously generated QR codes stored locally. Click to reload, or use the icons to edit the label or delete.
+                                Browse, search, reload, or manage your previously generated QR codes. Click an item to load it.
                              </AlertDialogDescription>
                          </AlertDialogHeader>
 
-                         {history.length > 0 ? (
-                             <ScrollArea className="flex-grow border rounded-md my-4">
-                                 <div className="p-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-                                     {history.map((item) => {
-                                         const TypeIcon = qrTypeOptions.find(opt => opt.value === item.type)?.icon || QrCodeIcon;
-                                         const isEditing = editingLabelId === item.id;
+                         {/* Conditional Rendering based on history and search */}
+                         <div className="flex-grow border rounded-md my-4 overflow-hidden">
+                            {history.length === 0 ? (
+                                <div className="flex items-center justify-center h-full text-muted-foreground">
+                                    No history yet. Generate and save some QR codes!
+                                </div>
+                            ) : filteredHistory.length === 0 && searchTerm ? (
+                                <div className="flex items-center justify-center h-full text-muted-foreground">
+                                    No history items match your search "{searchTerm}".
+                                </div>
+                             ) : (
+                                <ScrollArea className="h-full">
+                                     <div className="p-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4"> {/* More columns on larger screens */}
+                                         {filteredHistory.map((item) => {
+                                             const TypeIcon = qrTypeOptions.find(opt => opt.value === item.type)?.icon || QrCodeIcon;
+                                             const isEditing = editingLabelId === item.id;
 
-                                         return (
-                                             <Card key={item.id} className="overflow-hidden group relative hover:shadow-md transition-shadow">
-                                                  {/* Make entire card clickable except action buttons */}
-                                                  <button
-                                                    onClick={() => { if (!isEditing) loadFromHistory(item); }}
-                                                    className="absolute inset-0 z-10 focus:outline-none focus:ring-2 focus:ring-primary rounded-lg"
-                                                    aria-label={`Load ${item.label || `QR from ${format(item.timestamp, 'p')}`}`}
-                                                    disabled={isEditing}
-                                                  >
-                                                  </button>
-                                                 <CardContent className="p-3 flex items-start gap-3">
-                                                      {/* QR Preview */}
-                                                      {item.qrCodeSvgDataUrl ? (
-                                                          <img src={item.qrCodeSvgDataUrl} alt="QR Code Preview" className="w-16 h-16 sm:w-20 sm:h-20 object-contain border rounded bg-white shrink-0" />
-                                                      ) : (
-                                                           <div className="w-16 h-16 sm:w-20 sm:h-20 flex items-center justify-center border rounded bg-muted shrink-0">
-                                                               <QrCodeIcon className="w-8 h-8 text-muted-foreground" />
-                                                           </div>
-                                                      )}
-                                                      {/* Text Content and Actions */}
-                                                     <div className="flex-grow min-w-0 space-y-1">
-                                                        {isEditing ? (
-                                                            <div className="flex items-center gap-1">
-                                                                <Input
-                                                                    value={editingLabelValue}
-                                                                    onChange={(e) => setEditingLabelValue(e.target.value)}
-                                                                    className="h-7 text-sm px-2 flex-grow"
-                                                                    maxLength={50}
-                                                                    autoFocus
-                                                                    onKeyDown={(e) => { if (e.key === 'Enter') { editHistoryLabel(item.id, editingLabelValue); setEditingLabelId(null); } else if (e.key === 'Escape') { setEditingLabelId(null); } }}
-                                                                />
-                                                                <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => { editHistoryLabel(item.id, editingLabelValue); setEditingLabelId(null); }}>
-                                                                    <Check className="h-4 w-4 text-green-600" />
-                                                                </Button>
-                                                            </div>
-                                                        ) : (
-                                                            <p className="text-sm font-medium truncate group-hover:text-primary transition-colors">{item.label || `QR Code ${item.id}`}</p>
-                                                        )}
-
-                                                          <p className="text-xs text-muted-foreground flex items-center gap-1">
-                                                             <TypeIcon className="h-3 w-3 shrink-0" />
-                                                             {qrTypeOptions.find(opt => opt.value === item.type)?.label || item.type}
-                                                          </p>
-                                                         <p className="text-xs text-muted-foreground">{format(item.timestamp, 'PP p')}</p>
-                                                     </div>
-                                                      {/* Action Buttons (outside clickable area logic) */}
-                                                        <div className="flex flex-col gap-1 absolute top-1 right-1 z-20">
-                                                            {!isEditing && (
-                                                                <TooltipProvider delayDuration={300}>
-                                                                     <Tooltip>
-                                                                        <TooltipTrigger asChild>
-                                                                            <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-primary hover:bg-primary/10 h-7 w-7" onClick={(e) => { e.stopPropagation(); setEditingLabelId(item.id); setEditingLabelValue(item.label || ''); }}>
-                                                                               <Pencil className="h-4 w-4" />
-                                                                                <span className="sr-only">Edit Label</span>
-                                                                            </Button>
-                                                                        </TooltipTrigger>
-                                                                        <TooltipContent side="top"><p>Edit Label</p></TooltipContent>
-                                                                     </Tooltip>
-                                                                </TooltipProvider>
+                                             return (
+                                                 <Card key={item.id} className="overflow-hidden group relative hover:shadow-lg transition-shadow duration-200 flex flex-col h-full">
+                                                      {/* Make content area clickable */}
+                                                      <button
+                                                        onClick={() => { if (!isEditing) loadFromHistory(item); }}
+                                                        className="flex-grow flex items-start gap-3 p-3 cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary rounded-t-lg"
+                                                        aria-label={`Load ${item.label || `QR from ${format(item.timestamp, 'p')}`}`}
+                                                        disabled={isEditing}
+                                                      >
+                                                          {/* QR Preview */}
+                                                          {item.qrCodeSvgDataUrl ? (
+                                                              <img src={item.qrCodeSvgDataUrl} alt="QR Code Preview" className="w-16 h-16 object-contain border rounded bg-white shrink-0" />
+                                                          ) : (
+                                                               <div className="w-16 h-16 flex items-center justify-center border rounded bg-muted shrink-0">
+                                                                   <QrCodeIcon className="w-8 h-8 text-muted-foreground" />
+                                                               </div>
+                                                          )}
+                                                          {/* Text Content */}
+                                                         <div className="flex-grow min-w-0 space-y-1">
+                                                            {isEditing ? (
+                                                                <div className="flex items-center gap-1">
+                                                                    <Input
+                                                                        value={editingLabelValue}
+                                                                        onChange={(e) => setEditingLabelValue(e.target.value)}
+                                                                        className="h-7 text-sm px-2 flex-grow"
+                                                                        maxLength={50}
+                                                                        autoFocus
+                                                                        onKeyDown={(e) => { if (e.key === 'Enter') { editHistoryLabel(item.id, editingLabelValue); setEditingLabelId(null); } else if (e.key === 'Escape') { setEditingLabelId(null); } }}
+                                                                        onClick={(e) => e.stopPropagation()} // Prevent card click when editing
+                                                                    />
+                                                                    <Button size="icon" variant="ghost" className="h-7 w-7 shrink-0" onClick={(e) => { e.stopPropagation(); editHistoryLabel(item.id, editingLabelValue); setEditingLabelId(null); }}>
+                                                                        <Check className="h-4 w-4 text-green-600" />
+                                                                    </Button>
+                                                                </div>
+                                                            ) : (
+                                                                <p className="text-sm font-medium truncate group-hover:text-primary transition-colors">{item.label || `QR Code ${item.id}`}</p>
                                                             )}
-                                                             <AlertDialog>
-                                                                <TooltipProvider delayDuration={300}>
-                                                                    <Tooltip>
-                                                                        <TooltipTrigger asChild>
-                                                                            <AlertDialogTrigger asChild>
-                                                                                <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-destructive hover:bg-destructive/10 h-7 w-7" onClick={(e) => e.stopPropagation()}>
-                                                                                   <Trash2 className="h-4 w-4" />
-                                                                                    <span className="sr-only">Delete Item</span>
-                                                                                </Button>
-                                                                            </AlertDialogTrigger>
-                                                                        </TooltipTrigger>
-                                                                         <TooltipContent side="top"><p>Delete</p></TooltipContent>
-                                                                     </Tooltip>
-                                                                </TooltipProvider>
-                                                                <AlertDialogContent onClick={(e) => e.stopPropagation()}>
-                                                                    <AlertDialogHeader>
-                                                                        <AlertDialogTitle>Delete History Item?</AlertDialogTitle>
-                                                                        <AlertDialogDescription>
-                                                                            This action cannot be undone. Are you sure you want to delete "{item.label || `QR Code ${item.id}`}"?
-                                                                        </AlertDialogDescription>
-                                                                    </AlertDialogHeader>
-                                                                    <AlertDialogFooter>
-                                                                        <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                                                        <AlertDialogAction onClick={() => deleteFromHistory(item.id)} className={buttonVariants({ variant: "destructive" })}>Delete</AlertDialogAction>
-                                                                    </AlertDialogFooter>
-                                                                </AlertDialogContent>
-                                                             </AlertDialog>
-                                                        </div>
-                                                 </CardContent>
-                                             </Card>
-                                         );
-                                     })}
-                                 </div>
-                             </ScrollArea>
-                         ) : (
-                             <div className="flex-grow flex items-center justify-center text-muted-foreground">
-                                 No history yet. Generate and save some QR codes!
-                             </div>
-                         )}
+                                                              <p className="text-xs text-muted-foreground flex items-center gap-1">
+                                                                 <TypeIcon className="h-3 w-3 shrink-0" />
+                                                                 {qrTypeOptions.find(opt => opt.value === item.type)?.label || item.type}
+                                                              </p>
+                                                             <p className="text-xs text-muted-foreground">{format(item.timestamp, 'PP p')}</p>
+                                                         </div>
+                                                      </button>
+
+                                                       {/* Action Buttons Footer */}
+                                                      <CardFooter className="p-2 border-t bg-muted/30 flex justify-end gap-1 mt-auto">
+                                                         {!isEditing && (
+                                                            <TooltipProvider delayDuration={300}>
+                                                                 <Tooltip>
+                                                                    <TooltipTrigger asChild>
+                                                                        <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-primary hover:bg-primary/10 h-7 w-7" onClick={(e) => { e.stopPropagation(); setEditingLabelId(item.id); setEditingLabelValue(item.label || ''); }}>
+                                                                           <Pencil className="h-4 w-4" />
+                                                                            <span className="sr-only">Edit Label</span>
+                                                                        </Button>
+                                                                    </TooltipTrigger>
+                                                                    <TooltipContent side="top"><p>Edit Label</p></TooltipContent>
+                                                                 </Tooltip>
+                                                            </TooltipProvider>
+                                                        )}
+                                                         <AlertDialog>
+                                                            <TooltipProvider delayDuration={300}>
+                                                                <Tooltip>
+                                                                    <TooltipTrigger asChild>
+                                                                        <AlertDialogTrigger asChild>
+                                                                            <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-destructive hover:bg-destructive/10 h-7 w-7" onClick={(e) => e.stopPropagation()}>
+                                                                               <Trash2 className="h-4 w-4" />
+                                                                                <span className="sr-only">Delete Item</span>
+                                                                            </Button>
+                                                                        </AlertDialogTrigger>
+                                                                    </TooltipTrigger>
+                                                                     <TooltipContent side="top"><p>Delete</p></TooltipContent>
+                                                                 </Tooltip>
+                                                            </TooltipProvider>
+                                                            <AlertDialogContent onClick={(e) => e.stopPropagation()}>
+                                                                <AlertDialogHeader>
+                                                                    <AlertDialogTitle>Delete History Item?</AlertDialogTitle>
+                                                                    <AlertDialogDescription>
+                                                                        This action cannot be undone. Are you sure you want to delete "{item.label || `QR Code ${item.id}`}"?
+                                                                    </AlertDialogDescription>
+                                                                </AlertDialogHeader>
+                                                                <AlertDialogFooter>
+                                                                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                                                    <AlertDialogAction onClick={() => deleteFromHistory(item.id)} className={buttonVariants({ variant: "destructive" })}>Delete</AlertDialogAction>
+                                                                </AlertDialogFooter>
+                                                            </AlertDialogContent>
+                                                         </AlertDialog>
+                                                    </CardFooter>
+                                                 </Card>
+                                             );
+                                         })}
+                                     </div>
+                                 </ScrollArea>
+                             )}
+                         </div>
+
 
                          <AlertDialogFooter>
                              {history.length > 0 && (
