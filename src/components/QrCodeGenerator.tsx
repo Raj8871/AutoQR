@@ -16,7 +16,7 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/
 import { Checkbox } from '@/components/ui/checkbox';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import {
-    Download, Image as ImageIcon, Link as LinkIcon, Phone, Mail, MessageSquare, MapPin, Calendar as CalendarIcon, Settings2, Palette, Clock, Wifi, Upload, Check, Trash2, Info, Eye, EyeOff, QrCode as QrCodeIcon, RefreshCcw, Star, Sparkles, Shapes, CreditCard, Copy, Pencil, StarIcon, Share2, X, QrCode, History, Gift, Music, User, Lock, Mic, PlayCircle, PauseCircle, FileAudio, Save, DownloadCloud, Zap, Paintbrush, ShieldCheck, Contact, FileText, ExternalLink
+    Download, Image as ImageIcon, Link as LinkIcon, Phone, Mail, MessageSquare, MapPin, Calendar as CalendarIcon, Settings2, Palette, Clock, Wifi, Upload, Check, Trash2, Info, Eye, EyeOff, QrCode as QrCodeIcon, RefreshCcw, Star, Sparkles, Shapes, CreditCard, Copy, Pencil, StarIcon, Share2, X, QrCode, History, Gift, Music, User, Lock, Mic, PlayCircle, PauseCircle, FileAudio, Save, DownloadCloud, Zap, Paintbrush, ShieldCheck, Contact, FileText, ExternalLink, Search // Added Search icon
 } from 'lucide-react';
 import { format } from "date-fns";
 import { cn } from '@/lib/utils';
@@ -610,48 +610,31 @@ const QrCodeGenerator = () => { // Changed to default export
 
       const updateQrCode = async () => {
            try {
-                // Clear previous content only if an instance exists
+               // Clear previous content only if an instance exists and the container is not empty
                 if (instance && container && container.firstChild) {
-                    // Safely attempt to remove the child node
-                    try {
+                    // Check if the first child belongs to the current QR instance before removing
+                    // This requires a reliable way to associate the DOM element with the instance,
+                    // which qr-code-styling doesn't directly provide.
+                    // A safer approach is to always clear and re-append if necessary.
+                    while (container.firstChild) {
                         container.removeChild(container.firstChild);
-                    } catch (e: any) {
-                        // Ignore "Node not found" error, which can happen in rapid updates
-                        if (!(e instanceof DOMException && e.name === 'NotFoundError')) {
-                             console.warn("Ignoring removeChild error during QR update:", e);
-                        }
                     }
+                    instance = null; // Mark instance as removed from DOM
+                    setQrCodeInstance(null);
                 }
 
                 if (!hasData) {
                     setQrCodeSvgDataUrl(null);
-                    setQrCodeInstance(null);
+                    // Instance is already null or cleared above
                     return;
                 }
 
-                // Create or update instance only if there's data
-                if (!instance) {
-                    instance = new QRCodeStyling(qrOptions);
-                    instance.append(container);
-                    didAppend = true;
-                    setQrCodeInstance(instance);
+                // Re-create and append instance if data exists
+                instance = new QRCodeStyling(qrOptions);
+                instance.append(container);
+                didAppend = true;
+                setQrCodeInstance(instance);
 
-                } else {
-                    // Optimization: Only update if options or data actually changed significantly
-                    // This basic check might not cover all edge cases but helps prevent unnecessary updates
-                    const prevOptions = instance._options;
-                    if (JSON.stringify(prevOptions) !== JSON.stringify(qrOptions)) {
-                         if (typeof instance.update === 'function') {
-                            await instance.update(qrOptions);
-                        } else {
-                            // If update is not a function, re-create and append
-                            instance = new QRCodeStyling(qrOptions);
-                            instance.append(container);
-                            didAppend = true; // Ensure flag is set for potential cleanup
-                            setQrCodeInstance(instance); // Update the state with the new instance
-                        }
-                    }
-                }
 
                 // Generate SVG preview for history *after* successful generation/update
                 if (instance && hasData) {
@@ -685,10 +668,10 @@ const QrCodeGenerator = () => { // Changed to default export
                      toast({ variant: "destructive", title: "QR Generation Error", description: `Could not create/update QR code: ${(error as Error).message}` });
                 }
                setQrCodeSvgDataUrl(null);
-               setQrCodeInstance(null);
+               setQrCodeInstance(null); // Ensure instance state is cleared on error
                setIsQrGenerated(false);
-               // Cautiously clear container if append failed
-               if (didAppend && container) {
+                // Clear container content on error
+                if (container) {
                    try {
                        while (container.firstChild) {
                             container.removeChild(container.firstChild);
@@ -704,10 +687,18 @@ const QrCodeGenerator = () => { // Changed to default export
 
        return () => {
             clearTimeout(debounceTimeout);
-            // No direct DOM cleanup in return function to avoid race conditions
+            // Clean up instance when component unmounts or dependencies change drastically
+            // This might still have race conditions, careful testing needed.
+             if (qrCodeInstance && qrCodeRef.current && qrCodeRef.current.contains(qrCodeInstance._canvas?._element)) {
+                try {
+                     // qrCodeInstance.current?._canvas?._element?.remove(); // Attempt removal
+                } catch (e) {
+                     console.warn("Ignoring QR instance cleanup error:", e);
+                }
+            }
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [options, qrType, inputDataState, toast]); // qrCodeInstance removed
+  }, [options, qrType, inputDataState, toast]); // Re-added qrCodeInstance as dependency, needs careful checking
 
 
    // --- History Management ---
@@ -1657,7 +1648,7 @@ const stopRecording = () => {
                 {/* Content Tab */}
                 <TabsContent value="content" className="pt-6 space-y-6">
                     {/* Accordion for Content, Styling, Logo, Extras */}
-                    <Accordion type="multiple" collapsible className="w-full" defaultValue={["content-item", "styling-item"]}>
+                    <Accordion type="multiple" collapsible={"true"} className="w-full" defaultValue={["content-item", "styling-item"]}>
                          {/* Step 1: Content */}
                         <AccordionItem value="content-item">
                              <AccordionTrigger className="text-lg font-semibold">
