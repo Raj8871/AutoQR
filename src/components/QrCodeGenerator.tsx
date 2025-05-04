@@ -24,8 +24,7 @@ import { useToast, type Toast } from '@/hooks/use-toast'; // Corrected import fo
 import { Checkbox } from '@/components/ui/checkbox';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
-import * as Papa from 'papaparse';
-import JSZip from 'jszip';
+// Removed unused imports: Papa, JSZip, FileUp
 import { logFirebaseEvent } from '@/lib/firebase'; // Import logFirebaseEvent
 import { z } from 'zod';
 
@@ -33,7 +32,7 @@ import { z } from 'zod';
 // --- Types ---
 
 // Define allowed QR types
-type QrType = 'url' | 'text' | 'email' | 'phone' | 'whatsapp' | 'sms' | 'location' | 'event' | 'wifi' | 'vcard' | 'upi' | 'voice-image' | 'password-protected' ;
+type QrType = 'url' | 'text' | 'email' | 'phone' | 'whatsapp' | 'sms' | 'location' | 'event' | 'wifi' | 'vcard' | 'upi';
 
 // Define structure for history items
 interface HistoryItem {
@@ -59,8 +58,6 @@ const qrTypeOptions: { value: QrType; label: string; icon: React.ElementType; de
   { value: 'wifi', label: 'Wi-Fi Network', icon: Wifi, description: 'Connect to a Wi-Fi network automatically.' },
   { value: 'vcard', label: 'Contact (vCard)', icon: Contact, description: 'Share contact details in a standard vCard format.' },
   { value: 'upi', label: 'UPI Payment', icon: CreditCard, description: 'Generate a QR for UPI payments with a specific amount and note.' },
-  { value: 'voice-image', label: 'Voice Message Card', icon: Gift, description: 'Create a QR linking to a page with an image and playable voice message.' },
-  { value: 'password-protected', label: 'Password Protected Content', icon: Lock, description: 'Generate a QR that requires a password to view the hidden content.' },
  ];
 
 // Define style types
@@ -69,8 +66,6 @@ const cornerSquareTypes: CornerSquareType[] = ['square', 'extra-rounded', 'dot']
 const cornerDotTypes: CornerDotType[] = ['square', 'dot'];
 const wifiEncryptionTypes = ['WPA/WPA2', 'WEP', 'None'];
 
-// Audio recorder state
-type RecorderState = 'idle' | 'recording' | 'paused' | 'stopped';
 
 // --- Default Options ---
 const defaultOptions: QRCodeStylingOptions = {
@@ -214,8 +209,8 @@ const formatVCard = (data: Record<string, any>, toastFn: (options: Omit<Toast, '
     const fullName = (data.vcard_fullName || '').trim() || `${firstName} ${lastName}`.trim();
 
     if (!firstName || !lastName) {
-        // toastFn({ variant: "destructive", title: "Name Required", description: "First Name and Last Name are required for vCard." });
-        return ''; // Don't toast immediately
+        // Don't toast immediately, rely on generateQrDataString feedback
+        return '';
     }
 
     vCardString += `N:${lastName};${firstName};;;\n`; // Last Name; First Name; Middle Name; Prefix; Suffix
@@ -277,32 +272,6 @@ const formatUpi = (data: Record<string, any>, toastFn: (options: Omit<Toast, 'id
     return upiString;
 };
 
-// Simulate generating a URL for the voice/image card
-const generateVoiceImageUrl = (data: Record<string, any>): string => {
-  // In a real app, this would involve uploading files to a server/cloud storage
-  // and returning a unique URL to a page that displays them.
-  // For this simulation, we'll create a placeholder URL with encoded data.
-  const imageData = data.voice_image_file || 'placeholder_img';
-  const audioData = data.voice_audio_file || 'placeholder_audio';
-  // Basic encoding for simulation (replace with actual upload/URL generation)
-  const encodedData = btoa(JSON.stringify({ image: imageData, audio: audioData }));
-  return `/voice-card/${encodedData}`; // Example simulated URL structure
-};
-
-// Simulate generating a URL for password-protected content
-const generatePasswordProtectedUrl = (data: Record<string, any>): string => {
-    // In a real app, this involves server-side logic to store content and password hash.
-    // For simulation, we encode the content and password hint in the URL.
-    const content = data.password_content || '';
-    const password = data.password_value || ''; // Password itself should NOT be in URL
-    // Simulate a unique ID for the content
-    const contentId = `protected_${Date.now().toString(36)}`;
-    // In a real app, you'd store { contentId: { content: content, passwordHash: hash(password) } } on server.
-    // The URL would just contain the contentId.
-    // Simulate: Use a simple base64 encoding for content hint (NOT secure)
-    const encodedContentHint = btoa(content.substring(0, 50)); // Hint only
-    return `/protected/${contentId}?hint=${encodedContentHint}`; // Example URL
-};
 
 // Process image for shape/opacity
 const processImage = (
@@ -474,20 +443,6 @@ const generateQrDataString = (type: QrType, data: Record<string, any>, toastFn: 
                    return '';
                 }
                break;
-            case 'voice-image':
-                 if (!data.voice_image_file || !data.voice_audio_file) {
-                     // toastFn({ variant: "default", title: "Files Needed", description: "Please upload both an image and an audio file." });
-                     return ''; // Require both files
-                 }
-                 targetData = generateVoiceImageUrl(data); // Simulate getting the URL
-                 break;
-            case 'password-protected':
-                if (!data.password_content || !data.password_value) {
-                    // toastFn({ variant: "default", title: "Input Needed", description: "Please provide content and a password." });
-                    return ''; // Require content and password
-                }
-                targetData = generatePasswordProtectedUrl(data); // Simulate getting the URL
-                break;
           default: targetData = '';
         }
     } catch (error) {
@@ -544,14 +499,7 @@ const QrCodeGenerator: React.FC = () => { // Explicitly type as Functional Compo
   const [expiryDate, setExpiryDate] = useState<Date | undefined>(undefined);
   const [expiryTime, setExpiryTime] = useState<string>("00:00");
   const [wifiPasswordVisible, setWifiPasswordVisible] = useState<boolean>(false);
-  const [protectedPasswordVisible, setProtectedPasswordVisible] = useState<boolean>(false);
 
-  // Voice Recorder State
-  const [recorderState, setRecorderState] = useState<RecorderState>('idle');
-  const [audioChunks, setAudioChunks] = useState<Blob[]>([]);
-  const [audioUrl, setAudioUrl] = useState<string | null>(null);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const [isRecordingSupported, setIsRecordingSupported] = useState(false);
 
   // History State
   const [history, setHistory] = useState<HistoryItem[]>([]);
@@ -561,84 +509,12 @@ const QrCodeGenerator: React.FC = () => { // Explicitly type as Functional Compo
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [filteredHistory, setFilteredHistory] = useState<HistoryItem[]>([]);
 
-  // Bulk QR State
-  const [bulkQrCodes, setBulkQrCodes] = useState<string[]>([]);
-  const [csvFile, setCsvFile] = useState<File | null>(null);
-  const [csvData, setCsvData] = useState<any[]>([]);
 
   // Refs
   const logoInputRef = useRef<HTMLInputElement>(null);
   const qrCodeRef = useRef<HTMLDivElement>(null);
-  const voiceImageInputRef = useRef<HTMLInputElement>(null);
-  const voiceAudioInputRef = useRef<HTMLInputElement>(null);
 
 
-  // --- Voice Recorder Setup ---
-  useEffect(() => {
-    // Check for MediaRecorder support only on the client side
-    if (typeof window !== 'undefined' && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-      setIsRecordingSupported(true);
-    } else {
-      setIsRecordingSupported(false);
-    }
-  }, []);
-
-  const startRecording = async () => {
-    if (!isRecordingSupported) {
-      toast({ variant: 'destructive', title: 'Recording Not Supported', description: 'Your browser does not support audio recording.' });
-      return;
-    }
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const recorder = new MediaRecorder(stream);
-      mediaRecorderRef.current = recorder;
-
-      recorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          setAudioChunks((prev) => [...prev, event.data]);
-        }
-      };
-
-      recorder.onstop = () => {
-        const audioBlob = new Blob(audioChunks, { type: 'audio/webm' }); // webm is common, adjust if needed
-        const url = URL.createObjectURL(audioBlob);
-        setAudioUrl(url);
-        setInputDataState(prev => ({ ...prev, voice_audio_file: url })); // Store URL for QR generation
-        setAudioChunks([]); // Clear chunks for next recording
-        stream.getTracks().forEach(track => track.stop()); // Stop microphone access
-      };
-
-      setAudioChunks([]); // Clear previous chunks
-      setAudioUrl(null); // Clear previous URL
-      recorder.start();
-      setRecorderState('recording');
-      toast({ title: 'Recording Started', description: 'Click pause or stop when finished.' });
-    } catch (err) {
-      console.error('Error accessing microphone:', err);
-      toast({ variant: 'destructive', title: 'Microphone Access Denied', description: 'Please allow microphone access to record audio.' });
-    }
-  };
-
-  const pauseRecording = () => {
-    if (mediaRecorderRef.current && recorderState === 'recording') {
-      mediaRecorderRef.current.pause();
-      setRecorderState('paused');
-    }
-  };
-
-  const resumeRecording = () => {
-    if (mediaRecorderRef.current && recorderState === 'paused') {
-      mediaRecorderRef.current.resume();
-      setRecorderState('recording');
-    }
-  };
-
-  const stopRecording = () => {
-    if (mediaRecorderRef.current && (recorderState === 'recording' || recorderState === 'paused')) {
-      mediaRecorderRef.current.stop();
-      setRecorderState('stopped'); // State indicates recording finished, URL is set
-    }
-  };
 
   // --- Load History ---
   useEffect(() => {
@@ -701,12 +577,13 @@ const QrCodeGenerator: React.FC = () => { // Explicitly type as Functional Compo
            try {
                 // Clear previous content only if an instance exists
                 if (instance && container && container.firstChild) {
-                    while (container.firstChild) {
-                        try {
-                            container.removeChild(container.firstChild);
-                        } catch (e) {
+                     // Safely attempt to remove the child node
+                    try {
+                        container.removeChild(container.firstChild);
+                    } catch (e: any) {
+                        // Ignore "Node not found" error, which can happen in rapid updates
+                        if (!(e instanceof DOMException && e.name === 'NotFoundError')) {
                              console.warn("Ignoring removeChild error during QR update:", e);
-                             break;
                         }
                     }
                 }
@@ -776,12 +653,12 @@ const QrCodeGenerator: React.FC = () => { // Explicitly type as Functional Compo
                setIsQrGenerated(false);
                // Cautiously clear container if append failed
                if (didAppend && container) {
-                   while (container.firstChild) {
-                       try {
+                   try {
+                       while (container.firstChild) {
                             container.removeChild(container.firstChild);
-                       } catch {
-                            break;
                        }
+                   } catch {
+                        // Ignore cleanup errors
                    }
                }
            }
@@ -1004,32 +881,6 @@ const QrCodeGenerator: React.FC = () => { // Explicitly type as Functional Compo
      setInputDataState(prev => ({ ...prev, [key]: checked === true }));
    };
 
-   // Handle file uploads for Voice+Image card
-    const handleVoiceImageFileUpload = (event: React.ChangeEvent<HTMLInputElement>, fileType: 'image' | 'audio') => {
-        const file = event.target.files?.[0];
-        if (!file) return;
-
-        const maxSize = 5 * 1024 * 1024; // 5MB limit
-        if (file.size > maxSize) {
-            toast({ variant: 'destructive', title: 'File Too Large', description: `Please upload a file smaller than 5MB.` });
-            return;
-        }
-
-        const reader = new FileReader();
-        reader.onloadend = () => {
-            const fileDataUrl = reader.result as string;
-            const key = fileType === 'image' ? 'voice_image_file' : 'voice_audio_file';
-            setInputDataState(prev => ({ ...prev, [key]: fileDataUrl }));
-            toast({ title: `${fileType === 'image' ? 'Image' : 'Audio'} Uploaded`, description: file.name });
-        };
-        reader.onerror = () => {
-            toast({ variant: 'destructive', title: 'File Read Error', description: `Could not read the ${fileType} file.` });
-        };
-        reader.readAsDataURL(file);
-
-        // Clear the input value to allow uploading the same file again
-        event.target.value = '';
-    };
 
   // Consolidate date/time updates for events
   const handleEventDateTimeChange = (key: 'event_start' | 'event_end', value: string) => {
@@ -1544,113 +1395,6 @@ const QrCodeGenerator: React.FC = () => { // Explicitly type as Functional Compo
                                     <p className="text-xs text-muted-foreground">* UPI ID and Amount are required.</p>
                                 </div>
                             );
-                        case 'voice-image':
-                             return (
-                                <div className="space-y-4">
-                                     <div className="space-y-2">
-                                         <Label htmlFor="voice-image-file">Upload Image *</Label>
-                                         <Input
-                                             id="voice-image-file"
-                                             ref={voiceImageInputRef}
-                                             type="file"
-                                             accept="image/png, image/jpeg, image/gif, image/webp"
-                                             onChange={(e) => handleVoiceImageFileUpload(e, 'image')}
-                                             required
-                                             className="file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"
-                                         />
-                                         {inputDataState.voice_image_file && <img src={inputDataState.voice_image_file} alt="Image Preview" className="mt-2 h-24 w-auto rounded border" />}
-                                         <p className="text-xs text-muted-foreground">Max 5MB. PNG, JPG, GIF, WEBP.</p>
-                                     </div>
-                                      <div className="space-y-2">
-                                         <Label htmlFor="voice-audio-file">Upload or Record Audio *</Label>
-                                         <Input
-                                             id="voice-audio-file"
-                                             ref={voiceAudioInputRef}
-                                             type="file"
-                                             accept="audio/mpeg, audio/wav, audio/webm"
-                                             onChange={(e) => handleVoiceImageFileUpload(e, 'audio')}
-                                             className="file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"
-                                         />
-                                         {inputDataState.voice_audio_file && (
-                                             <audio controls src={inputDataState.voice_audio_file} className="mt-2 w-full">
-                                                 Your browser does not support the audio element.
-                                             </audio>
-                                         )}
-                                         <p className="text-xs text-muted-foreground">Max 5MB. MP3, WAV, WEBM. Or record below.</p>
-                                     </div>
-                                      {/* Voice Recorder Controls */}
-                                     {isRecordingSupported && (
-                                         <div className="space-y-2 border-t pt-4">
-                                            <Label>Record Audio</Label>
-                                             <div className="flex items-center gap-2">
-                                                 <Button
-                                                     variant={recorderState === 'recording' ? "destructive" : "outline"}
-                                                     size="icon"
-                                                     onClick={recorderState === 'recording' ? stopRecording : startRecording}
-                                                     disabled={recorderState === 'paused'}
-                                                 >
-                                                     {recorderState === 'recording' ? <PauseCircle className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
-                                                     <span className="sr-only">{recorderState === 'recording' ? 'Stop' : 'Record'}</span>
-                                                 </Button>
-                                                 {recorderState === 'recording' && (
-                                                    <Button variant="outline" size="icon" onClick={pauseRecording}>
-                                                        <PauseCircle className="h-4 w-4" /> <span className="sr-only">Pause</span>
-                                                    </Button>
-                                                 )}
-                                                  {recorderState === 'paused' && (
-                                                     <Button variant="outline" size="icon" onClick={resumeRecording}>
-                                                         <PlayCircle className="h-4 w-4" /> <span className="sr-only">Resume</span>
-                                                     </Button>
-                                                 )}
-                                                  {recorderState === 'paused' && (
-                                                     <Button variant="destructive-outline" size="icon" onClick={stopRecording}>
-                                                        <RotateCcw className="h-4 w-4" /> <span className="sr-only">Stop & Discard Paused</span>
-                                                    </Button>
-                                                  )}
-                                                 {recorderState === 'recording' || recorderState === 'paused' ? (
-                                                     <p className="text-sm text-muted-foreground animate-pulse">Recording...</p>
-                                                 ) : recorderState === 'stopped' ? (
-                                                     <p className="text-sm text-green-600">Recording saved!</p>
-                                                 ): <p className="text-sm text-muted-foreground">Click mic to start</p>}
-                                             </div>
-                                         </div>
-                                     )}
-                                 </div>
-                             );
-                        case 'password-protected':
-                             return (
-                                 <div className="space-y-4">
-                                     <div className="space-y-2">
-                                         <Label htmlFor="password-content">Content to Protect *</Label>
-                                         <Textarea
-                                             id="password-content"
-                                             value={inputDataState.password_content || ''}
-                                             onChange={(e) => handleInputChange('password_content', e.target.value)}
-                                             placeholder="Enter the text, URL, or data to hide behind a password..."
-                                             rows={4}
-                                             required
-                                         />
-                                     </div>
-                                     <div className="space-y-2">
-                                         <Label htmlFor="password-value">Set Password *</Label>
-                                         <div className="flex items-center gap-2">
-                                            <Input
-                                                 id="password-value"
-                                                 type={protectedPasswordVisible ? 'text' : 'password'}
-                                                 value={inputDataState.password_value || ''}
-                                                 onChange={(e) => handleInputChange('password_value', e.target.value)}
-                                                 placeholder="Enter a strong password"
-                                                 required
-                                             />
-                                              <Button variant="ghost" size="icon" onClick={() => setProtectedPasswordVisible(!protectedPasswordVisible)} type="button" aria-label={protectedPasswordVisible ? "Hide password" : "Show password"}>
-                                                  {protectedPasswordVisible ? <EyeOff className="h-4 w-4"/> : <Eye className="h-4 w-4"/>}
-                                              </Button>
-                                         </div>
-                                         <p className="text-xs text-muted-foreground">The QR will link to a page requiring this password. Remember it!</p>
-                                     </div>
-                                      <p className="text-xs text-muted-foreground">* Content and Password are required. Ensure you securely store/remember the password.</p>
-                                 </div>
-                             );
                         default:
                             return <p className="text-center text-muted-foreground">Select a QR code type to begin.</p>;
                     }
@@ -1658,191 +1402,6 @@ const QrCodeGenerator: React.FC = () => { // Explicitly type as Functional Compo
             </div>
         </div>
     );
-  };
-
-  // --- Bulk QR Code Generation ---
-
-  const handleCsvUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const allowedTypes = ['text/csv', 'application/pdf'];
-    const isCsv = file.type === 'text/csv' || file.name.endsWith('.csv');
-    const isPdf = file.type === 'application/pdf' || file.name.endsWith('.pdf');
-
-    if (!isCsv && !isPdf) {
-      toast({ variant: 'destructive', title: 'Invalid File Type', description: 'Please upload a CSV or PDF file.' });
-      return;
-    }
-
-    setCsvFile(file);
-
-    if (isPdf) {
-      toast({
-        title: 'PDF Uploaded',
-        description: 'Note: Bulk generation currently only supports CSV data. PDF parsing is not yet implemented.',
-        variant: 'default',
-        duration: 6000
-      });
-      setCsvData([]);
-      return;
-    }
-
-    if (isCsv) {
-        Papa.parse(file, {
-          header: true,
-          skipEmptyLines: true,
-          complete: (results) => {
-             if (results.errors.length > 0) {
-                 console.error("CSV Parsing Errors:", results.errors);
-                 toast({ variant: 'destructive', title: 'CSV Parsing Error', description: `Error parsing row ${results.errors[0].row}: ${results.errors[0].message}` });
-                 setCsvData([]);
-             } else if (!results.data.length) {
-                 toast({ variant: 'destructive', title: 'Empty CSV', description: 'The uploaded CSV file is empty or has no valid data.' });
-                 setCsvData([]);
-             } else if (!results.meta.fields || !results.meta.fields.includes('type') || !results.meta.fields.includes('data')) {
-                 toast({ variant: 'destructive', title: 'Invalid CSV Headers', description: "CSV must contain 'type' and 'data' columns." });
-                 setCsvData([]);
-             } else {
-                setCsvData(results.data as any[]);
-                toast({ title: 'CSV Uploaded', description: `Found ${results.data.length} rows. Ready to generate.` });
-             }
-          },
-          error: (error) => {
-             console.error("CSV Parsing Failed:", error);
-            toast({ variant: 'destructive', title: 'CSV Parsing Failed', description: 'Could not parse the CSV file.' });
-             setCsvData([]);
-          },
-        });
-    }
-  };
-
-
-  const handleBulkDownload = async () => {
-    if (bulkQrCodes.length === 0) {
-      toast({ variant: 'destructive', title: 'No QR Codes to Download', description: 'Please generate QR codes first.' });
-      return;
-    }
-    logFirebaseEvent('bulk_qr_download_started', { count: bulkQrCodes.length });
-
-    const zip = new JSZip();
-    const downloadFormat = fileExtension === 'svg' ? 'svg' : 'png';
-
-    bulkQrCodes.forEach((qrCodeDataUrl, index) => {
-      try {
-          const filename = `qr-code-${index + 1}-${csvData[index]?.type || 'bulk'}.${downloadFormat}`;
-          const base64Data = qrCodeDataUrl.split(',')[1];
-          if (!base64Data) {
-              console.warn(`Could not extract base64 data for QR code ${index + 1}. Skipping.`);
-              return;
-          }
-          zip.file(filename, base64Data, { base64: true });
-      } catch (error) {
-           console.error(`Error adding QR code ${index + 1} to zip:`, error);
-      }
-    });
-
-    try {
-         const zipFilename = 'bulk-qr-codes.zip';
-         const content = await zip.generateAsync({ type: 'blob' });
-
-         const url = window.URL.createObjectURL(content);
-         const link = document.createElement('a');
-         link.href = url;
-         link.download = zipFilename;
-         document.body.appendChild(link);
-         link.click();
-         document.body.removeChild(link);
-         window.URL.revokeObjectURL(url);
-
-         toast({ title: 'Download Started', description: `Downloading ${bulkQrCodes.length} QR codes as ${zipFilename}.` });
-          logFirebaseEvent('bulk_qr_download_completed', { count: bulkQrCodes.length });
-    } catch (error) {
-        console.error("Error generating or downloading zip file:", error);
-        toast({ variant: 'destructive', title: 'Zip Download Failed', description: 'Could not create or download the zip file.' });
-         logFirebaseEvent('bulk_qr_download_failed', { error: (error as Error).message });
-    }
-  };
-
-
-  const generateBulkQrCodes = async () => {
-    if (csvData.length === 0) {
-      toast({ variant: 'destructive', title: 'No CSV Data', description: 'Please upload a valid CSV file first.' });
-      return;
-    }
-    logFirebaseEvent('bulk_qr_generation_started', { count: csvData.length });
-
-    const generatedCodes: string[] = [];
-    let successCount = 0;
-    let errorCount = 0;
-
-    const bulkOptions = { ...options, type: 'svg' as 'svg', width: 256, height: 256 };
-    const tempInstance = new QRCodeStyling(bulkOptions);
-
-
-    for (let i = 0; i < csvData.length; i++) {
-         const row = csvData[i];
-         if (!row.type || !row.data || typeof row.type !== 'string' || typeof row.data !== 'string') {
-              console.warn(`Invalid data in CSV row ${i + 1}. Skipping. Row:`, row);
-              toast({ variant: 'destructive', title: 'Invalid Row Data', description: `Skipping row ${i + 1} due to missing or invalid 'type' or 'data'.`, duration: 5000 });
-              errorCount++;
-              continue;
-         }
-
-         const rowType = row.type.trim().toLowerCase() as QrType;
-         const rowDataValue = row.data.trim();
-
-         if (!qrTypeOptions.some(opt => opt.value === rowType)) {
-              console.warn(`Invalid QR type '${rowType}' in CSV row ${i + 1}. Skipping.`);
-               toast({ variant: 'destructive', title: 'Invalid QR Type', description: `Skipping row ${i + 1}: Invalid type '${rowType}'.`, duration: 5000 });
-               errorCount++;
-              continue;
-         }
-
-         const inputDataObject: Record<string, any> = {};
-         if (rowType === 'url') inputDataObject.url = rowDataValue;
-         else if (rowType === 'text') inputDataObject.text = rowDataValue;
-         else if (rowType === 'phone') inputDataObject.phone = rowDataValue;
-         else if (rowType === 'email') inputDataObject.email = rowDataValue; // Simplified
-         else inputDataObject[rowType] = rowDataValue; // Fallback
-
-        const qrDataString = generateQrDataString(rowType, inputDataObject, toast);
-
-         if (qrDataString) {
-             try {
-                  tempInstance.update({ data: qrDataString });
-                  await new Promise(resolve => setTimeout(resolve, 5));
-                  const dataUrl = await tempInstance.getRawDataURL('svg');
-                  if (dataUrl) {
-                     generatedCodes.push(dataUrl);
-                     successCount++;
-                  } else {
-                       console.warn(`Could not get data URL for QR code in row ${i + 1}. Skipping.`);
-                       errorCount++;
-                  }
-             } catch (error: any) {
-                  console.error(`Error generating QR for row ${i + 1}:`, error);
-                   toast({ variant: 'destructive', title: `Generation Error (Row ${i + 1})`, description: error.message || 'Could not generate QR code.', duration: 5000 });
-                  errorCount++;
-             }
-         } else {
-             console.warn(`Could not generate valid QR data string for row ${i + 1}. Skipping.`);
-             errorCount++;
-         }
-     }
-
-
-    setBulkQrCodes(generatedCodes);
-    if (successCount > 0) {
-         toast({ title: 'Bulk Generation Complete', description: `Generated ${successCount} QR codes. ${errorCount > 0 ? `${errorCount} failed.` : ''}` });
-          logFirebaseEvent('bulk_qr_generation_completed', { success: successCount, failed: errorCount });
-    } else if (errorCount > 0) {
-         toast({ variant: 'destructive', title: 'Bulk Generation Failed', description: `Could not generate any QR codes. ${errorCount} rows failed.` });
-         logFirebaseEvent('bulk_qr_generation_failed', { failed: errorCount });
-    } else {
-         toast({ variant: 'destructive', title: 'Bulk Generation Failed', description: 'No QR codes were generated. Check CSV data.' });
-         logFirebaseEvent('bulk_qr_generation_failed', { failed: csvData.length });
-    }
   };
 
 
@@ -1858,17 +1417,17 @@ const QrCodeGenerator: React.FC = () => { // Explicitly type as Functional Compo
             <CardDescription>Select type, enter content, and personalize the style.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
-             {/* Tabs for Content & Bulk */}
+             {/* Tabs for Content */}
              <Tabs defaultValue="content" className="w-full">
-                 <TabsList className="grid w-full grid-cols-2 mb-4">
+                 {/* Removed Bulk Generate Tab Trigger */}
+                <TabsList className="grid w-full grid-cols-1 mb-4">
                     <TabsTrigger value="content"><Settings2 className="inline-block mr-1 h-4 w-4" /> Options</TabsTrigger>
-                    <TabsTrigger value="bulk"><FileUp className="inline-block mr-1 h-4 w-4" /> Bulk Generate</TabsTrigger>
                 </TabsList>
 
                 {/* Content Tab */}
                 <TabsContent value="content" className="pt-6 space-y-6">
                     {/* Accordion for Content, Styling, Logo, Extras */}
-                    <Accordion type="multiple" collapsible="true" className="w-full" defaultValue={["content-item", "styling-item"]}>
+                    <Accordion type="multiple" collapsible className="w-full" defaultValue={["content-item", "styling-item"]}>
                          {/* Step 1: Content */}
                         <AccordionItem value="content-item">
                              <AccordionTrigger className="text-lg font-semibold">
@@ -2090,46 +1649,8 @@ const QrCodeGenerator: React.FC = () => { // Explicitly type as Functional Compo
 
                 </TabsContent>
 
-                {/* Bulk Generate Tab */}
-                <TabsContent value="bulk" className="pt-6 space-y-6">
-                    <div className="space-y-4">
-                        <Label htmlFor="csv-upload" className="flex items-center gap-2">
-                           <FileText className="h-4 w-4"/> Upload CSV or PDF File
-                        </Label>
-                        <Input
-                            id="csv-upload"
-                            type="file"
-                            accept=".csv, application/pdf"
-                            onChange={handleCsvUpload}
-                            className="file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"
-                        />
-                        <p className="text-xs text-muted-foreground">
-                            Upload a CSV file with columns 'type' and 'data' for bulk QR code generation.
-                            PDF upload is supported, but bulk generation from PDF is not yet implemented.
-                        </p>
-                        <Button onClick={generateBulkQrCodes} disabled={csvData.length === 0}>
-                            <Settings2 className="mr-2 h-4 w-4"/> Generate Bulk QR Codes (from CSV)
-                        </Button>
-                    </div>
+                 {/* Removed Bulk Generate Tab Content */}
 
-                    {bulkQrCodes.length > 0 && (
-                        <div className="space-y-4 pt-4 border-t">
-                             <h4 className="font-medium">Generated QR Codes ({bulkQrCodes.length})</h4>
-                             <ScrollArea className="h-72 w-full rounded-md border">
-                                 <div className="p-4 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                                    {bulkQrCodes.map((qrCodeDataUrl, index) => (
-                                        <div key={index} className="border rounded-lg overflow-hidden shadow-sm bg-white p-1 aspect-square flex items-center justify-center">
-                                            <img src={qrCodeDataUrl} alt={`QR Code ${index + 1}`} className="w-full h-auto object-contain" />
-                                        </div>
-                                    ))}
-                                </div>
-                             </ScrollArea>
-                            <Button onClick={handleBulkDownload} className="w-full sm:w-auto">
-                                <Download className="mr-2 h-4 w-4" /> Download All as Zip
-                             </Button>
-                        </div>
-                    )}
-                </TabsContent>
 
                  {/* History Dialog */}
                  <AlertDialog open={showHistory} onOpenChange={setShowHistory}>
@@ -2375,7 +1896,7 @@ const QrCodeGenerator: React.FC = () => { // Explicitly type as Functional Compo
             <Button onClick={saveToHistory} className="w-full" variant="secondary" disabled={!isQrGenerated}>
                  <Save className="mr-2 h-4 w-4" /> Save to History
             </Button>
-            <p className="text-xs text-muted-foreground text-center px-4">Note: History will only record manually saved QR codes. Unsaved QR codes will not appear.</p>
+            <p className="text-xs text-muted-foreground text-center px-4">History will only record manually saved QR codes. Unsaved QR codes will not appear.</p>
           </CardContent>
            <CardFooter>
               <Button onClick={onDownloadClick} className="w-full" disabled={!isQrGenerated}>
@@ -2388,6 +1909,3 @@ const QrCodeGenerator: React.FC = () => { // Explicitly type as Functional Compo
 }
 
 export default QrCodeGenerator;
-
-
-      
