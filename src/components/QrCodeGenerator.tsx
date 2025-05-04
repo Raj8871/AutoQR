@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
@@ -14,17 +13,16 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Calendar } from "@/components/ui/calendar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { ScrollArea } from '@/components/ui/scroll-area';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import {
-    Download, Image as ImageIcon, Link as LinkIcon, Phone, Mail, MessageSquare, MapPin, Calendar as CalendarIcon, Settings2, Palette, Clock, Wifi, Upload, Check, Trash2, Info, Eye, EyeOff, QrCode as QrCodeIcon, RefreshCcw, Star, Sparkles, Shapes, CreditCard, Copy, Pencil, StarIcon, Share2, X, QrCode, History, Gift, Music, User, Lock, Mic, PlayCircle, PauseCircle, FileAudio, Save, DownloadCloud, Zap, Paintbrush, ShieldCheck, Contact, FileText, FileUp, Search, Play, RotateCcw, ExternalLink
+    Download, Image as ImageIcon, Link as LinkIcon, Phone, Mail, MessageSquare, MapPin, Calendar as CalendarIcon, Settings2, Palette, Clock, Wifi, Upload, Check, Trash2, Info, Eye, EyeOff, QrCode as QrCodeIcon, RefreshCcw, Star, Sparkles, Shapes, CreditCard, Copy, Pencil, StarIcon, Share2, X, QrCode, History, Gift, Music, User, Lock, Mic, PlayCircle, PauseCircle, FileAudio, Save, DownloadCloud, Zap, Paintbrush, ShieldCheck, Contact, FileText, ExternalLink
 } from 'lucide-react';
 import { format } from "date-fns";
 import { cn } from '@/lib/utils';
-import { useToast, type Toast } from '@/hooks/use-toast'; // Corrected import for Toast type
-import { Checkbox } from '@/components/ui/checkbox';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { useToast, type Toast } from '@/hooks/use-toast';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
-// Removed unused imports: Papa, JSZip, FileUp
 import { logFirebaseEvent } from '@/lib/firebase'; // Import logFirebaseEvent
 import { z } from 'zod';
 
@@ -32,7 +30,7 @@ import { z } from 'zod';
 // --- Types ---
 
 // Define allowed QR types
-type QrType = 'url' | 'text' | 'email' | 'phone' | 'whatsapp' | 'sms' | 'location' | 'event' | 'wifi' | 'vcard' | 'upi';
+type QrType = 'url' | 'text' | 'email' | 'phone' | 'whatsapp' | 'sms' | 'location' | 'event' | 'wifi' | 'vcard' | 'upi' | 'audio-image';
 
 // Define structure for history items
 interface HistoryItem {
@@ -58,6 +56,7 @@ const qrTypeOptions: { value: QrType; label: string; icon: React.ElementType; de
   { value: 'wifi', label: 'Wi-Fi Network', icon: Wifi, description: 'Connect to a Wi-Fi network automatically.' },
   { value: 'vcard', label: 'Contact (vCard)', icon: Contact, description: 'Share contact details in a standard vCard format.' },
   { value: 'upi', label: 'UPI Payment', icon: CreditCard, description: 'Generate a QR for UPI payments with a specific amount and note.' },
+   { value: 'audio-image', label: 'Voice Gift Card', icon: Gift, description: 'Combine an image and audio message into a scannable gift card style page.' },
  ];
 
 // Define style types
@@ -443,6 +442,31 @@ const generateQrDataString = (type: QrType, data: Record<string, any>, toastFn: 
                    return '';
                 }
                break;
+          case 'audio-image':
+                const audioUrl = data.audioUrl || '';
+                const imageUrl = data.imageUrl || '';
+                // Basic validation
+                if (!audioUrl || !imageUrl) {
+                    // Don't toast immediately if files aren't uploaded yet
+                    return '';
+                }
+                 // Simulate generating a link to a landing page. In a real app, this would be a server endpoint.
+                 // For demo purposes, we encode the data URLs directly, which can make the QR huge.
+                 // A better approach would be to upload files and link to a page: /play?audio=id&image=id
+                 // targetData = `/play?audio=${encodeURIComponent(audioUrl)}&image=${encodeURIComponent(imageUrl)}`;
+
+                 // Simple simulation for client-side only (WILL CREATE VERY LARGE QR)
+                 const pageContent = `
+                 <!DOCTYPE html><html><head><title>Voice Gift</title>
+                 <meta name="viewport" content="width=device-width, initial-scale=1">
+                 <style>body{margin:0;font-family:sans-serif;display:flex;justify-content:center;align-items:center;min-height:100vh;background:#f0f0f0;} .card{background:white;border-radius:10px;box-shadow:0 4px 15px rgba(0,0,0,0.1);padding:20px;text-align:center;max-width:90%;} img{max-width:100%;height:auto;border-radius:5px;margin-bottom:15px;} audio{width:100%;margin-top:10px;}</style>
+                 </head><body><div class="card">
+                 <img src="${imageUrl}" alt="Gift Image">
+                 <audio controls autoplay src="${audioUrl}">Your browser does not support the audio element.</audio>
+                 </div></body></html>`;
+                 targetData = `data:text/html;charset=utf-8,${encodeURIComponent(pageContent)}`;
+
+                break;
           default: targetData = '';
         }
     } catch (error) {
@@ -457,7 +481,7 @@ const generateQrDataString = (type: QrType, data: Record<string, any>, toastFn: 
          toastFn({
              variant: "destructive",
              title: "Data Too Long",
-             description: `Input data is too long (${targetData.length} characters) and exceeds the QR code limit (~${MAX_DATA_LENGTH_FAIL} chars). Please shorten it or use smaller files. QR Generation might fail.`,
+             description: `Input data is too long (${targetData.length} characters) and exceeds the QR code limit (~${MAX_DATA_LENGTH_FAIL} chars). Please shorten it, use smaller files, or use a service that generates shorter links. QR Generation might fail.`,
              duration: 10000
          });
      } else if (targetData.length > MAX_DATA_LENGTH_WARN) {
@@ -476,7 +500,7 @@ const generateQrDataString = (type: QrType, data: Record<string, any>, toastFn: 
 
 
 // --- QrCodeGenerator Component ---
-const QrCodeGenerator: React.FC = () => { // Explicitly type as Functional Component
+const QrCodeGenerator = () => { // Changed to default export
   const { toast } = useToast(); // Get toast instance
 
   // Core QR State
@@ -500,6 +524,15 @@ const QrCodeGenerator: React.FC = () => { // Explicitly type as Functional Compo
   const [expiryTime, setExpiryTime] = useState<string>("00:00");
   const [wifiPasswordVisible, setWifiPasswordVisible] = useState<boolean>(false);
 
+    // Audio/Image Combo State
+  const [audioFile, setAudioFile] = useState<File | null>(null);
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [audioPreviewUrl, setAudioPreviewUrl] = useState<string | null>(null);
+  const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
+  const [isRecording, setIsRecording] = useState(false);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+
 
   // History State
   const [history, setHistory] = useState<HistoryItem[]>([]);
@@ -512,6 +545,8 @@ const QrCodeGenerator: React.FC = () => { // Explicitly type as Functional Compo
 
   // Refs
   const logoInputRef = useRef<HTMLInputElement>(null);
+  const audioInputRef = useRef<HTMLInputElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
   const qrCodeRef = useRef<HTMLDivElement>(null);
 
 
@@ -577,7 +612,7 @@ const QrCodeGenerator: React.FC = () => { // Explicitly type as Functional Compo
            try {
                 // Clear previous content only if an instance exists
                 if (instance && container && container.firstChild) {
-                     // Safely attempt to remove the child node
+                    // Safely attempt to remove the child node
                     try {
                         container.removeChild(container.firstChild);
                     } catch (e: any) {
@@ -609,10 +644,11 @@ const QrCodeGenerator: React.FC = () => { // Explicitly type as Functional Compo
                          if (typeof instance.update === 'function') {
                             await instance.update(qrOptions);
                         } else {
+                            // If update is not a function, re-create and append
                             instance = new QRCodeStyling(qrOptions);
                             instance.append(container);
-                            didAppend = true;
-                            setQrCodeInstance(instance);
+                            didAppend = true; // Ensure flag is set for potential cleanup
+                            setQrCodeInstance(instance); // Update the state with the new instance
                         }
                     }
                 }
@@ -674,7 +710,7 @@ const QrCodeGenerator: React.FC = () => { // Explicitly type as Functional Compo
   }, [options, qrType, inputDataState, toast]); // qrCodeInstance removed
 
 
-  // --- History Management ---
+   // --- History Management ---
  const saveToHistory = useCallback(() => {
      const qrData = generateQrData();
      if (!qrData || !isQrGenerated || !qrCodeSvgDataUrl) {
@@ -688,7 +724,7 @@ const QrCodeGenerator: React.FC = () => { // Explicitly type as Functional Compo
        data: { ...inputDataState },
        options: { ...options, data: '' }, // Clear data for storage efficiency
        timestamp: Date.now(),
-       label: qrLabel || `${qrType} - ${format(new Date(), 'PP p')}`,
+       label: qrLabel || `${qrTypeOptions.find(opt => opt.value === qrType)?.label || qrType} - ${format(new Date(), 'PP p')}`, // Use type label if no custom label
        qrCodeSvgDataUrl: qrCodeSvgDataUrl,
      };
 
@@ -705,7 +741,7 @@ const QrCodeGenerator: React.FC = () => { // Explicitly type as Functional Compo
 
 
      setHistory(prev => {
-        const updatedHistory = [newItem, ...prev].slice(0, 50);
+        const updatedHistory = [newItem, ...prev].slice(0, 50); // Keep max 50 items
         setLocalStorageItem('qrHistory', updatedHistory, toast);
         logFirebaseEvent('qr_history_saved', { qrType: qrType, itemCount: updatedHistory.length });
         toast({ title: "Saved to History", description: `"${newItem.label || 'Item'}" added.` });
@@ -752,7 +788,7 @@ const QrCodeGenerator: React.FC = () => { // Explicitly type as Functional Compo
   }, [logoSize, options.imageOptions, toast]); // Removed 'options' dependency, kept imageOptions
 
 
-  const loadFromHistory = useCallback((item: HistoryItem) => {
+ const loadFromHistory = useCallback((item: HistoryItem) => {
      logFirebaseEvent('qr_history_loaded', { qrType: item.type });
 
      setQrType(item.type);
@@ -782,6 +818,19 @@ const QrCodeGenerator: React.FC = () => { // Explicitly type as Functional Compo
           removeLogo(); // Clear logo if none in history item or original URL missing
      }
 
+      // Reset Audio/Image previews if loading a different type
+     if (item.type !== 'audio-image') {
+         setAudioFile(null);
+         setImageFile(null);
+         setAudioPreviewUrl(null);
+         setImagePreviewUrl(null);
+     } else {
+         // Restore previews if they exist in the data (might be base64)
+         setAudioPreviewUrl(item.data.audioUrl || null);
+         setImagePreviewUrl(item.data.imageUrl || null);
+     }
+
+
      setQrLabel(item.label || '');
      setExpiryDate(item.data.expiryDate ? new Date(item.data.expiryDate) : undefined);
      setExpiryTime(item.data.expiryTime || "00:00");
@@ -790,7 +839,7 @@ const QrCodeGenerator: React.FC = () => { // Explicitly type as Functional Compo
      setQrCodeSvgDataUrl(item.qrCodeSvgDataUrl); // Restore saved preview
      setQrPreviewKey(Date.now()); // Force preview re-render/update
 
-     toast({ title: "Loaded from History", description: `Restored QR code from ${format(item.timestamp, 'PP pp')}.` });
+     toast({ title: "Loaded from History", description: `Restored QR code configuration from ${format(item.timestamp, 'PP p')}.` });
      setShowHistory(false);
    }, [removeLogo, toast, applyLogoShapeAndOpacity]); // Only include essential stable dependencies
 
@@ -1123,6 +1172,120 @@ const QrCodeGenerator: React.FC = () => { // Explicitly type as Functional Compo
   }, [qrCodeInstance, options, fileExtension, qrType, generateQrData, isQrGenerated, expiryDate, qrLabel, toast, originalLogoUrl]);
 
 
+// --- Audio/Image Combo Handlers ---
+ const handleAudioUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+         if (!['audio/mpeg', 'audio/wav', 'audio/ogg', 'audio/mp4', 'audio/aac'].includes(file.type)) {
+            toast({ variant: "destructive", title: "Invalid Audio Type", description: "Please upload MP3, WAV, OGG, MP4, or AAC audio." });
+            return;
+        }
+        if (file.size > 5 * 1024 * 1024) { // 5MB limit
+            toast({ variant: "destructive", title: "File Too Large", description: "Audio file should be less than 5MB." });
+            return;
+        }
+        setAudioFile(file);
+        const reader = new FileReader();
+        reader.onloadend = () => {
+            const audioDataUrl = reader.result as string;
+            setAudioPreviewUrl(audioDataUrl);
+            setInputDataState(prev => ({ ...prev, audioUrl: audioDataUrl }));
+        };
+        reader.readAsDataURL(file);
+    }
+ };
+
+ const handleImageUploadForGift = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+        if (!['image/png', 'image/jpeg', 'image/gif', 'image/webp'].includes(file.type)) {
+            toast({ variant: "destructive", title: "Invalid Image Type", description: "Please upload PNG, JPG, GIF, or WEBP." });
+            return;
+        }
+         if (file.size > 2 * 1024 * 1024) { // 2MB limit
+            toast({ variant: "destructive", title: "File Too Large", description: "Image should be less than 2MB." });
+            return;
+        }
+        setImageFile(file);
+        const reader = new FileReader();
+        reader.onloadend = () => {
+            const imageDataUrl = reader.result as string;
+            setImagePreviewUrl(imageDataUrl);
+            setInputDataState(prev => ({ ...prev, imageUrl: imageDataUrl }));
+        };
+        reader.readAsDataURL(file);
+    }
+ };
+
+
+const startRecording = async () => {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        toast({ variant: "destructive", title: "Unsupported", description: "Audio recording is not supported by your browser." });
+        return;
+    }
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaRecorderRef.current = new MediaRecorder(stream);
+        audioChunksRef.current = [];
+
+        mediaRecorderRef.current.ondataavailable = (event) => {
+            audioChunksRef.current.push(event.data);
+        };
+
+        mediaRecorderRef.current.onstop = () => {
+            const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/wav' }); // Use WAV for broader compatibility
+            const audioUrl = URL.createObjectURL(audioBlob);
+            setAudioPreviewUrl(audioUrl);
+            // Convert Blob to Data URL for storing in inputDataState (can be large!)
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                setInputDataState(prev => ({ ...prev, audioUrl: reader.result as string }));
+            }
+            reader.readAsDataURL(audioBlob);
+            // Clean up stream tracks
+            stream.getTracks().forEach(track => track.stop());
+        };
+
+        mediaRecorderRef.current.start();
+        setIsRecording(true);
+        toast({ title: "Recording Started", description: "Click 'Stop Recording' when finished." });
+    } catch (err) {
+        console.error("Error starting recording:", err);
+        toast({ variant: "destructive", title: "Recording Error", description: "Could not access microphone. Please check permissions." });
+    }
+};
+
+const stopRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+        mediaRecorderRef.current.stop();
+        setIsRecording(false);
+        toast({ title: "Recording Stopped", description: "Audio captured." });
+    }
+};
+
+ const triggerAudioUpload = () => audioInputRef.current?.click();
+ const triggerImageUploadForGift = () => imageInputRef.current?.click();
+
+ const removeAudio = () => {
+     setAudioFile(null);
+     setAudioPreviewUrl(null);
+     if (audioInputRef.current) audioInputRef.current.value = '';
+     setInputDataState(prev => {
+         const { audioUrl, ...rest } = prev;
+         return rest;
+     });
+ };
+
+ const removeImageForGift = () => {
+     setImageFile(null);
+     setImagePreviewUrl(null);
+     if (imageInputRef.current) imageInputRef.current.value = '';
+     setInputDataState(prev => {
+         const { imageUrl, ...rest } = prev;
+         return rest;
+     });
+ };
+
 
   // --- Render Dynamic Inputs ---
   const renderInputs = () => {
@@ -1395,6 +1558,73 @@ const QrCodeGenerator: React.FC = () => { // Explicitly type as Functional Compo
                                     <p className="text-xs text-muted-foreground">* UPI ID and Amount are required.</p>
                                 </div>
                             );
+                         case 'audio-image':
+                            return (
+                                <div className="space-y-6">
+                                    {/* Image Upload */}
+                                    <div className="space-y-2">
+                                        <Label htmlFor="gift-image">Upload Image *</Label>
+                                         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+                                            <Button variant="outline" onClick={triggerImageUploadForGift} className="w-full sm:w-auto flex-grow justify-start text-left font-normal">
+                                                <Upload className="mr-2 h-4 w-4" />
+                                                {imagePreviewUrl ? "Change Image" : "Upload Image (PNG, JPG, WEBP...)"}
+                                            </Button>
+                                            <Input ref={imageInputRef} id="gift-image" type="file" accept="image/png, image/jpeg, image/gif, image/webp" onChange={handleImageUploadForGift} className="hidden" />
+                                            {imagePreviewUrl && (
+                                                <div className='flex items-center gap-2'>
+                                                    <img src={imagePreviewUrl} alt="Image Preview" className="h-10 w-10 rounded object-contain border bg-white" />
+                                                    <Button variant="ghost" size="icon" onClick={removeImageForGift} aria-label="Remove image">
+                                                        <Trash2 className="h-4 w-4 text-destructive" />
+                                                    </Button>
+                                                </div>
+                                            )}
+                                        </div>
+                                        <p className="text-xs text-muted-foreground">Image for the gift card page. Max 2MB.</p>
+                                    </div>
+
+                                    {/* Audio Section */}
+                                    <div className="space-y-2">
+                                        <Label htmlFor="gift-audio">Upload or Record Audio *</Label>
+                                         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+                                            <Button variant="outline" onClick={triggerAudioUpload} className="w-full sm:w-auto flex-grow justify-start text-left font-normal">
+                                                <FileAudio className="mr-2 h-4 w-4" />
+                                                {audioPreviewUrl ? "Change Audio" : "Upload Audio (MP3, WAV...)"}
+                                            </Button>
+                                             <Input ref={audioInputRef} id="gift-audio" type="file" accept="audio/mpeg, audio/wav, audio/ogg, audio/mp4, audio/aac" onChange={handleAudioUpload} className="hidden" />
+                                            {audioPreviewUrl && (
+                                                 <Button variant="ghost" size="icon" onClick={removeAudio} aria-label="Remove audio" className='ml-auto'>
+                                                     <Trash2 className="h-4 w-4 text-destructive" />
+                                                 </Button>
+                                            )}
+                                        </div>
+                                        <p className="text-xs text-muted-foreground">Audio message. Max 5MB.</p>
+
+                                        {/* Record Button */}
+                                         <div className="flex items-center gap-2 pt-2">
+                                             <Button
+                                                variant={isRecording ? "destructive" : "secondary"}
+                                                onClick={isRecording ? stopRecording : startRecording}
+                                                size="sm"
+                                            >
+                                                {isRecording ? <PauseCircle className="mr-2 h-4 w-4" /> : <Mic className="mr-2 h-4 w-4" />}
+                                                {isRecording ? 'Stop Recording' : 'Record Voice'}
+                                            </Button>
+                                            {isRecording && <span className="text-sm text-destructive animate-pulse">Recording...</span>}
+                                         </div>
+
+                                         {/* Audio Preview */}
+                                         {audioPreviewUrl && !isRecording && (
+                                            <div className="pt-2">
+                                                <Label>Audio Preview</Label>
+                                                <audio controls src={audioPreviewUrl} className="w-full mt-1">
+                                                    Your browser does not support the audio element.
+                                                </audio>
+                                            </div>
+                                        )}
+                                    </div>
+                                    <p className="text-xs text-muted-foreground">* Both Image and Audio are required.</p>
+                                </div>
+                            );
                         default:
                             return <p className="text-center text-muted-foreground">Select a QR code type to begin.</p>;
                     }
@@ -1408,7 +1638,8 @@ const QrCodeGenerator: React.FC = () => { // Explicitly type as Functional Compo
 
   // --- Main Render ---
   return (
-
+    <>
+    {/* Removed <FirebaseAnalyticsLogger /> */}
     <div className="w-full max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-8 px-4 py-6">
         {/* Options Panel */}
         <Card className="lg:col-span-2 order-2 lg:order-1 animate-fade-in">
@@ -1419,7 +1650,6 @@ const QrCodeGenerator: React.FC = () => { // Explicitly type as Functional Compo
           <CardContent className="space-y-6">
              {/* Tabs for Content */}
              <Tabs defaultValue="content" className="w-full">
-                 {/* Removed Bulk Generate Tab Trigger */}
                 <TabsList className="grid w-full grid-cols-1 mb-4">
                     <TabsTrigger value="content"><Settings2 className="inline-block mr-1 h-4 w-4" /> Options</TabsTrigger>
                 </TabsList>
@@ -1443,6 +1673,10 @@ const QrCodeGenerator: React.FC = () => { // Explicitly type as Functional Compo
                                             setInputDataState({});
                                             setExpiryDate(undefined);
                                             setQrLabel('');
+                                            // Reset specific fields for certain types
+                                            removeLogo(); // Clear logo when type changes
+                                            removeAudio();
+                                            removeImageForGift();
                                              if (value === 'url') {
                                                  setInputDataState({ url: '' });
                                              }
@@ -1649,8 +1883,6 @@ const QrCodeGenerator: React.FC = () => { // Explicitly type as Functional Compo
 
                 </TabsContent>
 
-                 {/* Removed Bulk Generate Tab Content */}
-
 
                  {/* History Dialog */}
                  <AlertDialog open={showHistory} onOpenChange={setShowHistory}>
@@ -1660,14 +1892,17 @@ const QrCodeGenerator: React.FC = () => { // Explicitly type as Functional Compo
                                  Generation History ({history.length})
                                  <div className="flex items-center gap-2">
                                      <div className="relative flex-grow max-w-xs">
-                                        <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                                         <Input
                                             type="search"
                                             placeholder="Search label, type, or data..."
                                             value={searchTerm}
                                             onChange={(e) => setSearchTerm(e.target.value)}
-                                            className="pl-8 pr-4 py-2 h-9 text-sm"
+                                            className="pl-8 pr-4 py-2 h-9 text-sm" // Adjusted padding
                                         />
+                                         {/* Search Icon inside Input */}
+                                         <div className="absolute left-2.5 top-1/2 transform -translate-y-1/2 text-muted-foreground">
+                                             <Search className="h-4 w-4" />
+                                        </div>
                                      </div>
                                      <AlertDialogCancel asChild>
                                           <Button variant="ghost" size="icon" onClick={() => setShowHistory(false)}>
@@ -1697,13 +1932,14 @@ const QrCodeGenerator: React.FC = () => { // Explicitly type as Functional Compo
                                          {filteredHistory.map((item) => {
                                              const TypeIcon = qrTypeOptions.find(opt => opt.value === item.type)?.icon || QrCodeIcon;
                                              const isEditing = editingLabelId === item.id;
+                                             const displayLabel = item.label || `${qrTypeOptions.find(opt => opt.value === item.type)?.label || item.type} - ${item.id.slice(-4)}`;
 
                                              return (
                                                  <Card key={item.id} className="overflow-hidden group relative hover:shadow-lg transition-shadow duration-200 flex flex-col h-full">
                                                       <button
                                                         onClick={() => { if (!isEditing) loadFromHistory(item); }}
-                                                        className="flex-grow flex items-start gap-3 p-3 cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary rounded-t-lg"
-                                                        aria-label={`Load ${item.label || `QR from ${format(item.timestamp, 'p')}`}`}
+                                                        className="flex-grow flex items-start gap-3 p-3 cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary rounded-t-lg w-full text-left" // Ensure full width and left align
+                                                        aria-label={`Load ${displayLabel}`}
                                                         disabled={isEditing}
                                                       >
                                                           {item.qrCodeSvgDataUrl ? (
@@ -1728,9 +1964,19 @@ const QrCodeGenerator: React.FC = () => { // Explicitly type as Functional Compo
                                                                     <Button size="icon" variant="ghost" className="h-7 w-7 shrink-0" onClick={(e) => { e.stopPropagation(); editHistoryLabel(item.id, editingLabelValue); setEditingLabelId(null); }}>
                                                                         <Check className="h-4 w-4 text-green-600" />
                                                                     </Button>
+                                                                     <Button size="icon" variant="ghost" className="h-7 w-7 shrink-0" onClick={(e) => { e.stopPropagation(); setEditingLabelId(null); }}>
+                                                                        <X className="h-4 w-4 text-muted-foreground" />
+                                                                    </Button>
                                                                 </div>
                                                             ) : (
-                                                                <p className="text-sm font-medium truncate group-hover:text-primary transition-colors">{item.label || `QR Code ${item.id}`}</p>
+                                                                 <TooltipProvider delayDuration={300}>
+                                                                    <Tooltip>
+                                                                        <TooltipTrigger asChild>
+                                                                             <p className="text-sm font-medium truncate group-hover:text-primary transition-colors">{displayLabel}</p>
+                                                                        </TooltipTrigger>
+                                                                        <TooltipContent side="top"><p>{displayLabel}</p></TooltipContent>
+                                                                    </Tooltip>
+                                                                 </TooltipProvider>
                                                             )}
                                                               <p className="text-xs text-muted-foreground flex items-center gap-1">
                                                                  <TypeIcon className="h-3 w-3 shrink-0" />
@@ -1753,6 +1999,18 @@ const QrCodeGenerator: React.FC = () => { // Explicitly type as Functional Compo
                                                                 <TooltipContent side="top"><p>Duplicate</p></TooltipContent>
                                                              </Tooltip>
                                                          </TooltipProvider>
+                                                          {/* Share Button (Placeholder) */}
+                                                         <TooltipProvider delayDuration={300}>
+                                                            <Tooltip>
+                                                                <TooltipTrigger asChild>
+                                                                    <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-green-500 hover:bg-green-500/10 h-7 w-7" onClick={(e) => { e.stopPropagation(); /* Implement Share Logic */ toast({ title: "Share (Coming Soon)", description: "Functionality to share this QR configuration." }); }}>
+                                                                        <Share2 className="h-4 w-4" />
+                                                                        <span className="sr-only">Share Item</span>
+                                                                    </Button>
+                                                                </TooltipTrigger>
+                                                                <TooltipContent side="top"><p>Share (Coming Soon)</p></TooltipContent>
+                                                            </Tooltip>
+                                                        </TooltipProvider>
                                                          {/* Edit Button */}
                                                          {!isEditing && (
                                                             <TooltipProvider delayDuration={300}>
@@ -1786,7 +2044,7 @@ const QrCodeGenerator: React.FC = () => { // Explicitly type as Functional Compo
                                                                 <AlertDialogHeader>
                                                                     <AlertDialogTitle>Delete History Item?</AlertDialogTitle>
                                                                     <AlertDialogDescription>
-                                                                        This action cannot be undone. Are you sure you want to delete "{item.label || `QR Code ${item.id}`}"?
+                                                                        This action cannot be undone. Are you sure you want to delete "{displayLabel}"?
                                                                     </AlertDialogDescription>
                                                                 </AlertDialogHeader>
                                                                 <AlertDialogFooter>
@@ -1905,7 +2163,8 @@ const QrCodeGenerator: React.FC = () => { // Explicitly type as Functional Compo
            </CardFooter>
         </Card>
     </div>
+    </>
   );
 }
 
-export default QrCodeGenerator;
+export default QrCodeGenerator; // Default export
