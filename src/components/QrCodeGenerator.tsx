@@ -1176,7 +1176,7 @@ export function QrCodeGenerator() {
                 {/* Content Tab */}
                 <TabsContent value="content" className="pt-6 space-y-6">
                     {/* Accordion for Content, Styling, Logo, Extras */}
-                    <Accordion type="multiple" collapsible className="w-full" defaultValue={["content-item", "styling-item"]}>
+                    <Accordion type="multiple" collapsible="true" className="w-full" defaultValue={["content-item", "styling-item"]}>
                          {/* Step 1: Content */}
                         <AccordionItem value="content-item">
                              <AccordionTrigger className="text-lg font-semibold">
