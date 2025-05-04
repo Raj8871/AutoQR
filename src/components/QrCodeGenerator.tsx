@@ -14,14 +14,13 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Calendar } from "@/components/ui/calendar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"; // Import Accordion
-import { Download, Image as ImageIcon, Link as LinkIcon, Phone, Mail, MessageSquare, MapPin, Calendar as CalendarIcon, Settings2, Palette, Clock, Wifi, Upload, Check, Trash2, Info, Eye, EyeOff, QrCode as QrCodeIcon, History as HistoryIcon, RefreshCcw, Star, Sparkles, Shapes, CreditCard, Copy, Pencil, StarIcon, Share2, X } from 'lucide-react'; // Removed Mic, Lock, User
+import { Download, Image as ImageIcon, Link as LinkIcon, Phone, Mail, MessageSquare, MapPin, Calendar as CalendarIcon, Settings2, Palette, Clock, Wifi, Upload, Check, Trash2, Info, Eye, EyeOff, QrCode as QrCodeIcon, RefreshCcw, Star, Sparkles, Shapes, CreditCard, Copy, Pencil, StarIcon, Share2, X, QrCode } from 'lucide-react'; // Removed HistoryIcon
 import { format } from "date-fns";
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import type { Toast } from '@/hooks/use-toast'; // Import Toast type
 import { Checkbox } from '@/components/ui/checkbox';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { logFirebaseEvent } from '@/lib/firebase'; // Import logFirebaseEvent
 
@@ -50,23 +49,6 @@ const cornerSquareTypes: CornerSquareType[] = ['square', 'extra-rounded', 'dot']
 const cornerDotTypes: CornerDotType[] = ['square', 'dot'];
 const wifiEncryptionTypes = ['WPA/WPA2', 'WEP', 'None'];
 
-// Define History Item structure
-interface HistoryItem {
-  id: string;
-  timestamp: number;
-  qrType: QrType;
-  inputData: Record<string, any>;
-  options: Partial<QRCodeStylingOptions>; // Store only relevant customizable options
-  label: string;
-  isFavorite?: boolean; // Optional: Mark favorite QR codes
-  previewSvgDataUrl: string | null; // Store the preview URL for quick display
-  notes?: string; // User notes for history item
-  tags?: string[]; // Tags for categorization
-}
-
-
-const LOCAL_STORAGE_KEY = 'qrCodeHistory_v2'; // Versioning key
-const MAX_HISTORY_ITEMS = 50; // Increased history limit
 
 // --- Default Options ---
 const defaultOptions: QRCodeStylingOptions = {
@@ -126,7 +108,7 @@ const setLocalStorageItem = <T>(key: string, value: T, toast?: (options: Omit<To
     window.localStorage.setItem(key, JSON.stringify(value));
   } catch (error) {
     console.error(`Error setting localStorage key “${key}”:`, error);
-     toast?.({ variant: "destructive", title: "Storage Error", description: "Could not save history. Local storage might be full or disabled." });
+     toast?.({ variant: "destructive", title: "Storage Error", description: "Could not save. Local storage might be full or disabled." });
   }
 };
 
@@ -145,6 +127,10 @@ const formatICS = (data: Record<string, any>, toast: (options: Omit<Toast, 'id'>
     if (data.event_description) icsString += `DESCRIPTION:${data.event_description.replace(/\n/g, '\\n')}\n`; // Escape newlines
 
     const startDate = new Date(data.event_start); // Ensure it's a Date object
+    if (isNaN(startDate.getTime())) { // Validate start date
+        toast({ variant: "destructive", title: "Invalid Start Date", description: "Please select a valid start date and time." });
+        return '';
+    }
     icsString += `DTSTART:${formatDate(startDate)}\n`;
 
     if (data.event_end) {
@@ -161,6 +147,7 @@ const formatICS = (data: Record<string, any>, toast: (options: Omit<Toast, 'id'>
          if (!isNaN(endDateDefault.getTime())) { // Check if calculation resulted in valid date
              icsString += `DTEND:${formatDate(endDateDefault)}\n`;
          } else {
+              // This should be unreachable if start date validation passed, but kept for safety
               toast({ variant: "destructive", title: "Invalid Start Date", description: "Could not calculate default end date." });
               return ''; // Prevent generation if start date was bad
          }
@@ -180,7 +167,10 @@ const formatWifi = (data: Record<string, any>, toast: (options: Omit<Toast, 'id'
     const encryption = data.wifi_encryption === 'None' ? 'nopass' : (data.wifi_encryption || 'WPA'); // Default to WPA if not None
     const hidden = data.wifi_hidden ? 'true' : 'false';
 
-    if (!ssid) return ''; // SSID is mandatory
+    if (!ssid) {
+        toast({ variant: "destructive", title: "SSID Required", description: "Network Name (SSID) cannot be empty." });
+        return ''; // SSID is mandatory
+    }
 
     // Password is required unless encryption is 'nopass'
     if (encryption !== 'nopass' && !password) {
@@ -210,16 +200,20 @@ const formatUpi = (data: Record<string, any>, toast: (options: Omit<Toast, 'id'>
         toast({ variant: "destructive", title: "Invalid Amount", description: "UPI amount must be a positive number." });
         return ''; // Stop generation if invalid
     }
+     // Amount required for UPI
+     if (!data.upi_amount || isNaN(amount) || amount <= 0) {
+        toast({ variant: "destructive", title: "Amount Required", description: "A positive amount is required for UPI payments." });
+        return ''; // Stop generation if amount is missing or invalid
+    }
 
     // Construct URI: upi://pay?pa=<upi_id>&pn=<payee_name>&am=<amount>&cu=INR&tn=<note>
     let upiString = `upi://pay?pa=${encodeURIComponent(upiId)}`;
     if (payeeName) {
         upiString += `&pn=${encodeURIComponent(payeeName)}`; // Add Payee Name
     }
-    // Only include amount if it's positive
-    if (amount > 0) {
-        upiString += `&am=${amount.toFixed(2)}`; // Amount with 2 decimal places
-    }
+    // Include amount (guaranteed positive by validation above)
+    upiString += `&am=${amount.toFixed(2)}`; // Amount with 2 decimal places
+
     upiString += `&cu=INR`; // Currency is INR
     if (note) {
         upiString += `&tn=${encodeURIComponent(note)}`; // Transaction Note
@@ -305,10 +299,17 @@ const generateQrDataString = (type: QrType, data: Record<string, any>, toast: (o
                     return ''; // Invalid URL format
                  }
              } else {
+                // toast({ variant: "destructive", title: "URL Required", description: "Website URL cannot be empty." });
                  return ''; // Empty URL
              }
              break;
-          case 'text': targetData = data.text?.trim() || ''; break;
+          case 'text':
+                targetData = data.text?.trim() || '';
+                if (!targetData) {
+                     // toast({ variant: "destructive", title: "Text Required", description: "Text content cannot be empty." });
+                     return '';
+                }
+                break;
           case 'email':
             const emailTo = data.email?.trim();
              // Basic email validation
@@ -318,19 +319,27 @@ const generateQrDataString = (type: QrType, data: Record<string, any>, toast: (o
                   toast({ variant: "destructive", title: "Invalid Email", description: "Please enter a valid email address." });
                   return '';
              } else {
+                 // toast({ variant: "destructive", title: "Email Required", description: "Recipient email cannot be empty." });
                   return ''; // Empty email
              }
             break;
-          case 'phone': targetData = data.phone?.trim() ? `tel:${data.phone.trim()}` : ''; break;
+          case 'phone':
+                targetData = data.phone?.trim() ? `tel:${data.phone.trim()}` : '';
+                if (!targetData) {
+                    // toast({ variant: "destructive", title: "Phone Required", description: "Phone number cannot be empty." });
+                    return '';
+                }
+                break;
           case 'whatsapp':
             // Basic check for digits only (allow leading '+')
             const phoneNum = (data.whatsapp_phone || '').replace(/[^0-9+]/g, '');
             if (phoneNum && phoneNum.length > 5) { // Very basic length check
                  targetData = `https://wa.me/${phoneNum.replace('+', '')}?text=${encodeURIComponent(data.whatsapp_message || '')}`;
-            } else if (phoneNum) {
+            } else if (data.whatsapp_phone) { // Only show error if user tried to enter something
                 toast({ variant: "destructive", title: "Invalid Phone", description: "Please enter a valid WhatsApp number including country code." });
                 return '';
             } else {
+                 // toast({ variant: "destructive", title: "Phone Required", description: "WhatsApp number cannot be empty." });
                  return '';
             }
             break;
@@ -339,6 +348,7 @@ const generateQrDataString = (type: QrType, data: Record<string, any>, toast: (o
             if (smsPhoneNum) {
                  targetData = `sms:${smsPhoneNum}?body=${encodeURIComponent(data.sms_message || '')}`;
             } else {
+                // toast({ variant: "destructive", title: "Phone Required", description: "SMS recipient number cannot be empty." });
                  return '';
             }
             break;
@@ -352,24 +362,43 @@ const generateQrDataString = (type: QrType, data: Record<string, any>, toast: (o
                   toast({ variant: "destructive", title: "Invalid Coordinates", description: "Please enter valid latitude (-90 to 90) and longitude (-180 to 180)." });
                   return '';
              } else {
+                 // toast({ variant: "destructive", title: "Coordinates Required", description: "Latitude and Longitude cannot be empty." });
                   return '';
              }
              break;
           case 'event':
-              targetData = formatICS({ summary: data.event_summary, location: data.event_location, description: data.event_description, startDate: data.event_start, endDate: data.event_end }, toast);
+              // Validation inside formatICS, pass toast
+              targetData = formatICS(data, toast);
               // formatICS handles its own validation and returns '' on failure
               if (!targetData && (data.event_summary || data.event_start)) {
-                 // formatICS might have already shown a toast, maybe avoid double-toasting
+                 // toast({ variant: "destructive", title: "Event Data Required", description: "Event Title and Start Date/Time are required." });
+                 // formatICS might have already shown a specific toast, avoid double-toasting
                  // console.warn("ICS data generation failed.");
+                 return ''; // Explicitly return empty string if formatICS failed
+              }
+              if (!targetData && !data.event_summary && !data.event_start) {
+                  return ''; // Return empty if mandatory fields are missing initially
               }
               break;
           case 'wifi':
-               targetData = formatWifi({ wifi_ssid: data.wifi_ssid, wifi_password: data.wifi_password, wifi_encryption: data.wifi_encryption || 'WPA/WPA2', wifi_hidden: data.wifi_hidden || false }, toast);
+               targetData = formatWifi(data, toast);
                 // formatWifi handles its own validation
+               if (!targetData && (data.wifi_ssid)) { // Return empty if validation fails but SSID was entered
+                    return '';
+               }
+               if (!targetData && !data.wifi_ssid) { // Return empty if SSID is initially missing
+                    return '';
+               }
                break;
           case 'upi': // Added UPI case
-               targetData = formatUpi({ upi_id: data.upi_id, upi_name: data.upi_name, upi_amount: data.upi_amount, upi_note: data.upi_note }, toast);
+               targetData = formatUpi(data, toast);
                 // formatUpi handles its own validation
+               if (!targetData && (data.upi_id || data.upi_amount)) { // Return empty if validation fails but required fields were attempted
+                  return '';
+               }
+                if (!targetData && (!data.upi_id || !data.upi_amount)) { // Return empty if required fields are initially missing
+                   return '';
+                }
                break;
           default: targetData = '';
         }
@@ -429,222 +458,12 @@ export function QrCodeGenerator() {
   const [expiryTime, setExpiryTime] = useState<string>("00:00"); // Default time
   const [wifiPasswordVisible, setWifiPasswordVisible] = useState<boolean>(false);
 
-   // History State
-  const [history, setHistory] = useState<HistoryItem[]>([]);
-  const [editingItemId, setEditingItemId] = useState<string | null>(null); // Track item being edited
-  const [editedLabel, setEditedLabel] = useState<string>(''); // Temp state for editing label
-  const [editedNotes, setEditedNotes] = useState<string>(''); // Temp state for editing notes
-  const [editedTags, setEditedTags] = useState<string[]>([]); // Temp state for editing tags
-  const [filterFavorites, setFilterFavorites] = useState<boolean>(false); // State to filter favorites
-  const [historySearchTerm, setHistorySearchTerm] = useState<string>(''); // State for history search
-  const [availableTags, setAvailableTags] = useState<string[]>([]); // All unique tags from history
 
   // Refs
   const logoInputRef = useRef<HTMLInputElement>(null);
   const qrCodeRef = useRef<HTMLDivElement>(null); // Ref for the container div
 
-   // --- History Management ---
-
-  // Load history and extract tags from local storage on mount
-  useEffect(() => {
-    const loadedHistory = getLocalStorageItem<HistoryItem[]>(LOCAL_STORAGE_KEY, []);
-    // Sort by timestamp descending on load
-    loadedHistory.sort((a, b) => b.timestamp - a.timestamp);
-    setHistory(loadedHistory);
-
-    // Extract unique tags
-    const tagsSet = new Set<string>();
-    loadedHistory.forEach(item => item.tags?.forEach(tag => tagsSet.add(tag)));
-    setAvailableTags(Array.from(tagsSet).sort());
-  }, []);
-
-
-  // Update local storage and available tags whenever history changes
-  useEffect(() => {
-    setLocalStorageItem(LOCAL_STORAGE_KEY, history, toast); // Pass toast for error handling
-
-    // Update unique tags
-    const tagsSet = new Set<string>();
-    history.forEach(item => item.tags?.forEach(tag => tagsSet.add(tag)));
-    setAvailableTags(prevTags => {
-      const newTags = Array.from(tagsSet).sort();
-      // Only update if the tags actually changed to avoid unnecessary re-renders
-      if (JSON.stringify(prevTags) !== JSON.stringify(newTags)) {
-        return newTags;
-      }
-      return prevTags;
-    });
-  }, [history, toast]);
-
-
-   // Add item to history
-  const addToHistory = useCallback((newItemData: Omit<HistoryItem, 'id' | 'timestamp' | 'previewSvgDataUrl' | 'isFavorite' | 'notes' | 'tags'>, svgDataUrl: string | null) => {
-    // Basic validation before adding: Ensure there's data
-    const qrDataString = generateQrDataString(newItemData.qrType, newItemData.inputData, toast); // Pass toast
-    if (!qrDataString) {
-        // console.warn("Attempted to save empty or invalid QR code to history.");
-        return; // Don't save if data generation failed
-    }
-
-     // Prevent excessively long data from being saved (optional, but good practice)
-     if (qrDataString.length > 3000) { // Stricter limit for history save
-        // console.warn("QR data too long to save in history.");
-         // Optionally toast here too, or just silently fail to save history item
-         toast({ variant: "destructive", title: "Data Too Long", description: "QR data is too long to save in history."});
-         return;
-     }
-
-
-    const fullItem: HistoryItem = {
-        ...newItemData,
-        id: `qr-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
-        timestamp: Date.now(),
-        previewSvgDataUrl: svgDataUrl, // Use the passed SVG data URL
-        isFavorite: false, // Default to not favorite
-        notes: '', // Default empty notes
-        tags: [], // Default empty tags
-    };
-
-     // Add or update logic
-     setHistory(prevHistory => {
-        // Check if an item with similar data already exists (simple check)
-        // This check might be too simple for complex types like vCard or event
-        // Consider a more robust comparison if needed
-        // const existingIndex = prevHistory.findIndex(item =>
-        //     item.qrType === fullItem.qrType && JSON.stringify(item.inputData) === JSON.stringify(fullItem.inputData)
-        // );
-        const existingIndex = -1; // Disable simple duplicate check for now
-
-        let newHistory: HistoryItem[];
-        if (existingIndex > -1) {
-            // Update existing item's timestamp and preview, move to top
-            const updatedHistory = [...prevHistory];
-            const [existingItem] = updatedHistory.splice(existingIndex, 1);
-            existingItem.timestamp = fullItem.timestamp;
-            existingItem.previewSvgDataUrl = fullItem.previewSvgDataUrl;
-            existingItem.label = fullItem.label; // Update label too
-            // Preserve favorite status, notes, tags
-            newHistory = [{ ...existingItem }, ...updatedHistory];
-        } else {
-            // Add new item to the top
-            newHistory = [fullItem, ...prevHistory];
-        }
-
-         // Sort by timestamp (newest first) and limit size
-        newHistory.sort((a, b) => b.timestamp - a.timestamp);
-        newHistory = newHistory.slice(0, MAX_HISTORY_ITEMS);
-
-        return newHistory;
-     });
-  }, [toast]); // Added toast to dependency array
-
-
-   // Clear history
-  const clearHistory = useCallback(() => {
-    setHistory([]);
-    setAvailableTags([]); // Clear available tags as well
-    toast({ title: "History Cleared", description: "Your QR code generation history has been removed." });
-  }, [toast]);
-
-  // Remove single item from history
-  const removeFromHistory = useCallback((id: string) => {
-    setHistory(prev => prev.filter(item => item.id !== id));
-    toast({ title: "Item Removed", description: "QR code removed from history." });
-  }, [toast]);
-
-  // Toggle favorite status
-  const toggleFavorite = useCallback((id: string) => {
-    setHistory(prev => prev.map(item =>
-        item.id === id ? { ...item, isFavorite: !item.isFavorite } : item
-    ).sort((a, b) => b.timestamp - a.timestamp)); // Keep sorted
-  }, []);
-
-   // Edit Label, Notes, Tags Handlers
-   const startEditingDetails = (item: HistoryItem) => {
-       setEditingItemId(item.id);
-       setEditedLabel(item.label);
-       setEditedNotes(item.notes || '');
-       setEditedTags(item.tags || []);
-   };
-
-   const cancelEditingDetails = () => {
-       setEditingItemId(null);
-       setEditedLabel('');
-       setEditedNotes('');
-       setEditedTags([]);
-   };
-
-   const saveEditedDetails = (id: string) => {
-        setHistory(prev => prev.map(item =>
-            item.id === id ? {
-                ...item,
-                label: editedLabel.trim() || `${item.qrType.toUpperCase()} QR`, // Default label if empty
-                notes: editedNotes.trim(),
-                tags: editedTags.filter(tag => tag.trim() !== '').map(tag => tag.trim().toLowerCase()) // Clean and lowercase tags
-            } : item
-        ));
-        toast({ title: "Details Updated" });
-        cancelEditingDetails(); // Exit editing mode
-   };
-
-   // Handler for adding/removing tags in edit mode
-   const handleTagChange = (tag: string, checked: boolean) => {
-       setEditedTags(prev =>
-           checked ? [...prev, tag] : prev.filter(t => t !== tag)
-       );
-   };
-
-   // Handle share action (example using Web Share API if available)
-   const shareHistoryItem = async (item: HistoryItem) => {
-       const qrData = generateQrDataString(item.qrType, item.inputData, toast); // Pass toast
-       const shareData: ShareData = {
-           title: `QR Code: ${item.label || item.qrType.toUpperCase()}`,
-           text: `Scan this QR code! Type: ${item.qrType}`, // Simplified text
-           // url: 'YOUR_APP_URL/view?id=' + item.id // If you have shareable links
-       };
-
-        // Try sharing SVG data URL if available and supported
-        let files: File[] = [];
-        if (item.previewSvgDataUrl && item.previewSvgDataUrl.startsWith('data:image/svg+xml')) {
-            try {
-                const response = await fetch(item.previewSvgDataUrl);
-                const blob = await response.blob();
-                const file = new File([blob], `${item.label || 'qr-code'}.svg`, { type: 'image/svg+xml' });
-                if (navigator.canShare && navigator.canShare({ files: [file] })) {
-                   files.push(file);
-                }
-            } catch (err) {
-                console.warn("Could not create file from SVG data URL for sharing:", err);
-            }
-        }
-
-       if (navigator.share) {
-           try {
-                if (files.length > 0 && navigator.canShare({ files })) {
-                     await navigator.share({ ...shareData, files });
-                } else if (navigator.canShare(shareData)) {
-                     await navigator.share(shareData);
-                } else {
-                    throw new Error("Cannot share this data type.");
-                }
-               toast({ title: "Shared Successfully" });
-           } catch (error) {
-                console.error('Error sharing:', error);
-                // Fallback to clipboard if sharing fails or is not fully supported
-                 navigator.clipboard.writeText(qrData)
-                 .then(() => toast({ title: "Content Copied", description: "QR code data copied to clipboard (Share failed)." }))
-                 .catch(() => toast({ variant: "destructive", title: "Share/Copy Failed", description: "Could not share or copy the QR code data." }));
-           }
-       } else {
-            // Fallback: Copy the data to clipboard if Share API not available
-            navigator.clipboard.writeText(qrData)
-             .then(() => toast({ title: "Content Copied", description: "QR code data copied to clipboard (Share API not available)." }))
-             .catch(() => toast({ variant: "destructive", title: "Copy Failed", description: "Could not copy the QR code data." }));
-       }
-   };
-
-
-  // --- Logo Handling ---
+   // --- Logo Handling ---
   const removeLogo = useCallback(() => {
      setOriginalLogoUrl(null);
      setLogoPreviewUrl(null);
@@ -741,25 +560,7 @@ export function QrCodeGenerator() {
                         const reader = new FileReader();
                         reader.onloadend = () => {
                             const svgDataUrl = reader.result as string;
-                            setQrCodeSvgDataUrl(svgDataUrl); // Keep for history save
-
-                            // Save to history AFTER successful generation and preview update
-                             const currentInputData = { ...inputData };
-
-                            addToHistory({
-                                qrType: qrType,
-                                inputData: currentInputData, // Use potentially cleaned input data
-                                options: { // Store relevant options
-                                    dotsOptions: options.dotsOptions,
-                                    backgroundOptions: options.backgroundOptions,
-                                    cornersSquareOptions: options.cornersSquareOptions,
-                                    cornersDotOptions: options.cornersDotOptions,
-                                    image: options.image, // Store processed image URL
-                                    imageOptions: options.imageOptions,
-                                    // Don't store width/height from options unless specifically needed
-                                },
-                                label: qrLabel || `${qrTypeOptions.find(o => o.value === qrType)?.label || qrType.toUpperCase()} QR`, // Default label if empty
-                            }, svgDataUrl); // Pass SVG data URL
+                            setQrCodeSvgDataUrl(svgDataUrl); // Keep for potential future manual save
                         };
                         reader.onerror = () => setQrCodeSvgDataUrl(null);
                         reader.readAsDataURL(blob);
@@ -798,60 +599,28 @@ export function QrCodeGenerator() {
            clearTimeout(debounceTimeout);
        };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [options, qrType, inputData, qrLabel, addToHistory, toast]); // Added toast to dependency array
-
-
-   // Reload settings from a history item
-  const loadFromHistory = useCallback((item: HistoryItem) => {
-    const dataToLoad = { ...item.inputData };
-
-    setQrType(item.qrType);
-    setInputData(dataToLoad); // Use restored data
-    // Reconstruct full options from stored partial options + defaults
-    const loadedOptions = {
-        ...defaultOptions, // Start with defaults
-        type: 'svg', // Ensure type is svg for preview
-        width: options.width, // Keep current preview size
-        height: options.height,
-        ...item.options,  // Apply stored customizable options
-        data: generateQrDataString(item.qrType, dataToLoad, toast) // Pass toast
-    };
-    setOptions(loadedOptions); // This triggers the main useEffect
-    setQrLabel(item.label);
-
-
-    // Attempt to reconstruct logo state from stored options
-    if (item.options?.image) {
-        setLogoPreviewUrl(item.options.image); // Use the stored (potentially processed) image URL
-        setOriginalLogoUrl(null); // Assume we don't have the original when loading history
-        setLogoSize(item.options.imageOptions?.imageSize ? Math.round(item.options.imageOptions.imageSize * 100) : 40);
-        // Infer shape/opacity from options if possible, otherwise default
-        // (We didn't store shape/opacity explicitly before, might need to adjust history item structure if needed)
-        setLogoShape('square'); // Default assumption
-        setLogoOpacity(100); // Default assumption
-    } else {
-        removeLogo(); // Clear logo if none in history item
-    }
-
-    // Reset expiry state (not stored in history)
-    setExpiryDate(undefined);
-    setExpiryTime("00:00");
-
-    setQrPreviewKey(Date.now()); // Force re-render of preview container if needed
-    toast({ title: "Loaded from History", description: `Restored QR code configuration from ${format(item.timestamp, 'PP pp')}.` });
-  }, [removeLogo, options.width, options.height, toast]); // Added toast dependency
+  }, [options, qrType, inputData, toast]); // Removed qrLabel, addToHistory dependencies
 
 
   // --- Input Handlers ---
   const handleInputChange = (key: string, value: any) => {
     // Validation for numeric fields
-    if ((key === 'latitude' || key === 'upi_amount') && value && isNaN(Number(value))) {
+    if ((key === 'latitude' || key === 'longitude' || key === 'upi_amount') && value && isNaN(Number(value))) {
          toast({ variant: "destructive", title: "Invalid Input", description: "Please enter a valid number." });
          return;
     }
      if (key === 'upi_amount' && value && Number(value) < 0) {
          toast({ variant: "destructive", title: "Invalid Amount", description: "Amount cannot be negative." });
          // Optionally reset or clamp the value: setInputData(prev => ({ ...prev, [key]: '0.01' }));
+         return;
+     }
+     // Latitude/Longitude validation
+     if (key === 'latitude' && value && (Number(value) < -90 || Number(value) > 90)) {
+         toast({ variant: "destructive", title: "Invalid Latitude", description: "Latitude must be between -90 and 90." });
+         return;
+     }
+      if (key === 'longitude' && value && (Number(value) < -180 || Number(value) > 180)) {
+         toast({ variant: "destructive", title: "Invalid Longitude", description: "Longitude must be between -180 and 180." });
          return;
      }
 
@@ -1146,27 +915,6 @@ export function QrCodeGenerator() {
   }, [qrCodeInstance, options, fileExtension, qrType, generateQrData, isQrGenerated, expiryDate, qrLabel, toast]); // Added toast dependency
 
 
-     // --- Filtered and Sorted History ---
-    const filteredHistory = history
-        .filter(item => {
-            if (filterFavorites && !item.isFavorite) return false;
-            if (historySearchTerm) {
-                const term = historySearchTerm.toLowerCase();
-                // Search in label, type, notes, and tags
-                const labelMatch = item.label.toLowerCase().includes(term);
-                const typeMatch = item.qrType.toLowerCase().includes(term);
-                const notesMatch = item.notes?.toLowerCase().includes(term);
-                const tagsMatch = item.tags?.some(tag => tag.toLowerCase().includes(term));
-                // Basic search in inputData values (can be extended)
-                const inputDataMatch = Object.values(item.inputData)
-                    .some(value => typeof value === 'string' && value.toLowerCase().includes(term));
-                return labelMatch || typeMatch || notesMatch || tagsMatch || inputDataMatch;
-            }
-            return true;
-        })
-        .sort((a, b) => b.timestamp - a.timestamp); // Ensure sorting is always applied
-
-
 
   // --- Render Dynamic Inputs ---
   const renderInputs = () => {
@@ -1405,182 +1153,10 @@ export function QrCodeGenerator() {
   };
 
 
- // --- Render History Item ---
- const renderHistoryItem = (item: HistoryItem) => {
-    const Icon = qrTypeOptions.find(opt => opt.value === item.qrType)?.icon || QrCodeIcon;
-    const description = item.label || `${item.qrType.toUpperCase()} QR`;
-
-    return (
-      <div key={item.id} className="flex flex-col gap-2 p-3 border-b last:border-b-0 hover:bg-muted/50 transition-colors group"> {/* Added group class */}
-        {/* Main clickable area to load */}
-        <div className="flex items-center justify-between gap-2 cursor-pointer" onClick={() => loadFromHistory(item)}>
-            <div className="flex items-center gap-3 overflow-hidden flex-grow min-w-0"> {/* Added min-w-0 */}
-              {item.previewSvgDataUrl ? (
-                <img src={item.previewSvgDataUrl} alt="QR Preview" className="h-10 w-10 rounded border object-contain bg-white shrink-0" />
-              ) : (
-                <div className="h-10 w-10 rounded border bg-muted flex items-center justify-center shrink-0">
-                  <Icon className="h-5 w-5 text-muted-foreground" />
-                </div>
-              )}
-              <div className="flex-grow overflow-hidden"> {/* Added overflow-hidden */}
-                 <TooltipProvider>
-                    <Tooltip>
-                        <TooltipTrigger asChild>
-                           <p className="text-sm font-medium truncate cursor-pointer hover:underline" title={description}>
-                             {description}
-                           </p>
-                        </TooltipTrigger>
-                        <TooltipContent><p>Click to reload</p></TooltipContent>
-                    </Tooltip>
-                 </TooltipProvider>
-                <p className="text-xs text-muted-foreground">
-                    {qrTypeOptions.find(o => o.value === item.qrType)?.label} - {format(item.timestamp, 'MMM d, HH:mm')}
-                </p>
-                {/* Display Tags */}
-                 {item.tags && item.tags.length > 0 && (
-                     <div className="mt-1 flex flex-wrap gap-1">
-                         {item.tags.map(tag => (
-                             <span key={tag} className="px-1.5 py-0.5 text-[10px] bg-secondary text-secondary-foreground rounded">
-                                 {tag}
-                             </span>
-                         ))}
-                     </div>
-                 )}
-              </div>
-            </div>
-
-             {/* Action Buttons */}
-             <div className="flex items-center gap-0.5 shrink-0">
-                <TooltipProvider>
-                     {/* Favorite Button */}
-                    <Tooltip>
-                        <TooltipTrigger asChild>
-                             <Button variant="ghost" size="icon" className="h-8 w-8" onClick={(e) => {e.stopPropagation(); toggleFavorite(item.id);}}>
-                                <StarIcon className={cn("h-4 w-4 transition-colors", item.isFavorite ? "fill-yellow-400 text-yellow-500" : "text-muted-foreground hover:text-yellow-500")} />
-                             </Button>
-                        </TooltipTrigger>
-                         <TooltipContent><p>{item.isFavorite ? 'Unmark as favorite' : 'Mark as favorite'}</p></TooltipContent>
-                    </Tooltip>
-                     {/* Edit Details Button */}
-                     <Tooltip>
-                        <TooltipTrigger asChild>
-                           <Button variant="ghost" size="icon" className="h-8 w-8" onClick={(e) => {e.stopPropagation(); startEditingDetails(item);}}>
-                             <Pencil className="h-4 w-4 text-muted-foreground hover:text-primary" />
-                           </Button>
-                        </TooltipTrigger>
-                        <TooltipContent><p>Edit Label, Notes & Tags</p></TooltipContent>
-                     </Tooltip>
-                    {/* Share Button */}
-                    <Tooltip>
-                        <TooltipTrigger asChild>
-                             <Button variant="ghost" size="icon" className="h-8 w-8" onClick={(e) => {e.stopPropagation(); shareHistoryItem(item);}}>
-                                <Share2 className="h-4 w-4 text-muted-foreground hover:text-primary" />
-                            </Button>
-                        </TooltipTrigger>
-                         <TooltipContent><p>Share</p></TooltipContent>
-                    </Tooltip>
-                     {/* Reload Button */}
-                     <Tooltip>
-                        <TooltipTrigger asChild>
-                             <Button variant="ghost" size="icon" className="h-8 w-8" onClick={(e) => {e.stopPropagation(); loadFromHistory(item);}}>
-                                <RefreshCcw className="h-4 w-4 text-muted-foreground hover:text-primary" />
-                            </Button>
-                        </TooltipTrigger>
-                         <TooltipContent><p>Reload this configuration</p></TooltipContent>
-                    </Tooltip>
-                    {/* Delete Button */}
-                    <AlertDialog>
-                        <Tooltip>
-                            <TooltipTrigger asChild>
-                                <AlertDialogTrigger asChild>
-                                    <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive/70 hover:text-destructive" onClick={(e) => e.stopPropagation()}>
-                                        <Trash2 className="h-4 w-4" />
-                                    </Button>
-                                </AlertDialogTrigger>
-                            </TooltipTrigger>
-                            <TooltipContent><p>Delete this item</p></TooltipContent>
-                        </Tooltip>
-                        <AlertDialogContent onClick={(e) => e.stopPropagation()}> {/* Prevent triggering loadFromHistory */}
-                            <AlertDialogHeader>
-                            <AlertDialogTitle>Delete QR Code?</AlertDialogTitle>
-                            <AlertDialogDescription>
-                                Are you sure you want to remove "{item.label}" created on {format(item.timestamp, 'PP')} from your history? This action cannot be undone.
-                            </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                            <AlertDialogAction onClick={() => removeFromHistory(item.id)} className={cn(buttonVariants({ variant: "destructive" }))}>
-                                Yes, Delete
-                            </AlertDialogAction>
-                            </AlertDialogFooter>
-                        </AlertDialogContent>
-                    </AlertDialog>
-                </TooltipProvider>
-            </div>
-        </div>
-
-         {/* Expanded Edit Section */}
-         {editingItemId === item.id && (
-             <div className="mt-2 p-3 border rounded-md bg-background space-y-3 animate-accordion-down">
-                 {/* Label Edit */}
-                 <div className="space-y-1">
-                     <Label htmlFor={`edit-label-${item.id}`}>Label</Label>
-                     <Input
-                         id={`edit-label-${item.id}`}
-                         type="text"
-                         value={editedLabel}
-                         onChange={(e) => setEditedLabel(e.target.value)}
-                         className="h-8 text-sm"
-                         maxLength={50}
-                         placeholder="Enter a label"
-                     />
-                 </div>
-                 {/* Notes Edit */}
-                 <div className="space-y-1">
-                      <Label htmlFor={`edit-notes-${item.id}`}>Notes</Label>
-                      <Textarea
-                         id={`edit-notes-${item.id}`}
-                         value={editedNotes}
-                         onChange={(e) => setEditedNotes(e.target.value)}
-                         placeholder="Add notes here..."
-                         rows={2}
-                         className="text-sm"
-                      />
-                 </div>
-                 {/* Tags Edit */}
-                 <div className="space-y-1">
-                     <Label>Tags</Label>
-                     <div className="flex flex-wrap gap-2">
-                         {availableTags.map(tag => (
-                             <div key={tag} className="flex items-center gap-1.5">
-                                 <Checkbox
-                                     id={`edit-tag-${item.id}-${tag}`}
-                                     checked={editedTags.includes(tag)}
-                                     onCheckedChange={(checked) => handleTagChange(tag, checked === true)}
-                                 />
-                                 <Label htmlFor={`edit-tag-${item.id}-${tag}`} className="text-xs font-normal">{tag}</Label>
-                             </div>
-                         ))}
-                     </div>
-                      {/* Optional: Input for adding new tags */}
-                      {/* <Input placeholder="Add new tag..." className="h-8 mt-2" onKeyDown={...}/> */}
-                 </div>
-
-                 {/* Save/Cancel Buttons */}
-                 <div className="flex justify-end gap-2 pt-2">
-                     <Button variant="ghost" size="sm" onClick={cancelEditingDetails}>Cancel</Button>
-                     <Button size="sm" onClick={() => saveEditedDetails(item.id)}>Save Details</Button>
-                 </div>
-             </div>
-         )}
-      </div>
-    );
-  };
-
 
   // --- Main Render ---
   return (
-    <>
+
     <div className="w-full max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-8 px-4 py-6">
         {/* Options Panel */}
         <Card className="lg:col-span-2 order-2 lg:order-1 animate-fade-in">
@@ -1589,22 +1165,22 @@ export function QrCodeGenerator() {
             <CardDescription>Select type, enter content, and personalize the style.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
-             {/* Tabs for Content & History */}
+             {/* Tabs for Content & History (History tab removed) */}
              <Tabs defaultValue="content" className="w-full">
                  {/* Use full width tabs on small screens */}
-                <TabsList className="grid w-full grid-cols-2 mb-4">
+                <TabsList className="grid w-full grid-cols-1 mb-4"> {/* Only one tab now */}
                     <TabsTrigger value="content"><Settings2 className="inline-block mr-1 h-4 w-4" /> Options</TabsTrigger>
-                    <TabsTrigger value="history"><HistoryIcon className="inline-block mr-1 h-4 w-4" /> History ({filteredHistory.length})</TabsTrigger>
+                    {/* Removed History Trigger */}
                 </TabsList>
 
                 {/* Content Tab */}
                 <TabsContent value="content" className="pt-6 space-y-6">
                     {/* Accordion for Content, Styling, Logo, Extras */}
-                    <Accordion type="multiple" className="w-full" defaultValue={["content-item", "styling-item"]}>
+                    <Accordion type="multiple" collapsible className="w-full" defaultValue={["content-item", "styling-item"]}>
                          {/* Step 1: Content */}
                         <AccordionItem value="content-item">
                              <AccordionTrigger className="text-lg font-semibold">
-                                <span className="flex items-center gap-2"><QrCodeIcon className="h-5 w-5"/> 1. Content</span>
+                                <span className="flex items-center gap-2"><QrCode className="h-5 w-5"/> 1. Content</span>
                              </AccordionTrigger>
                              <AccordionContent className="pt-4 space-y-6">
                                 {/* QR Type Selection */}
@@ -1780,12 +1356,12 @@ export function QrCodeGenerator() {
                             </AccordionTrigger>
                              <AccordionContent className="pt-4 space-y-6">
                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                                     {/* Label */}
-                                     <div className="space-y-2">
+                                     {/* Label (Removed, as history is removed) */}
+                                     {/* <div className="space-y-2">
                                          <Label htmlFor="qr-label">Label Text (For History)</Label>
-                                         <Input id="qr-label" type="text" value={qrLabel} onChange={(e) => setQrLabel(e.target.value)} placeholder="e.g., My Website QR" maxLength={50} /> {/* Increased max length */}
+                                         <Input id="qr-label" type="text" value={qrLabel} onChange={(e) => setQrLabel(e.target.value)} placeholder="e.g., My Website QR" maxLength={50} />
                                          <p className="text-xs text-muted-foreground">Helps identify this QR in your history.</p>
-                                     </div>
+                                     </div> */}
 
                                       {/* Expiry Reminder */}
                                      <div className='space-y-2'>
@@ -1819,73 +1395,7 @@ export function QrCodeGenerator() {
 
                 </TabsContent>
 
-                 {/* History Tab */}
-                <TabsContent value="history" className="pt-6 space-y-4">
-                     <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 mb-4">
-                        <div className="flex-grow">
-                            <Label htmlFor="history-search" className="text-base font-semibold">Generation History</Label>
-                             <Input
-                                id="history-search"
-                                type="text"
-                                placeholder="Search history (label, type, notes, tags...)"
-                                value={historySearchTerm}
-                                onChange={(e) => setHistorySearchTerm(e.target.value)}
-                                className="mt-1 h-9"
-                            />
-                        </div>
-                        <div className="flex items-center gap-2 mt-2 sm:mt-0 shrink-0">
-                            <Button
-                                variant={filterFavorites ? "secondary" : "outline"}
-                                size="sm"
-                                onClick={() => setFilterFavorites(!filterFavorites)}
-                                disabled={history.length === 0}
-                                title={filterFavorites ? "Show All" : "Show Favorites Only"}
-                            >
-                                <StarIcon className={cn("h-4 w-4", filterFavorites ? "fill-yellow-400 text-yellow-500" : "text-muted-foreground")} />
-                                <span className="ml-2 hidden sm:inline">{filterFavorites ? "Favorites" : "All"}</span>
-                            </Button>
-                            <AlertDialog>
-                                <AlertDialogTrigger asChild>
-                                    <Button variant="outline" size="sm" disabled={history.length === 0} title="Clear All History">
-                                        <Trash2 className="h-4 w-4" />
-                                        <span className="ml-2 hidden sm:inline">Clear All</span>
-                                    </Button>
-                                </AlertDialogTrigger>
-                                <AlertDialogContent>
-                                    <AlertDialogHeader>
-                                        <AlertDialogTitle>Clear All History?</AlertDialogTitle>
-                                        <AlertDialogDescription>
-                                            This will permanently delete your entire QR code generation history ({history.length} items) from this browser. This action cannot be undone.
-                                        </AlertDialogDescription>
-                                    </AlertDialogHeader>
-                                    <AlertDialogFooter>
-                                        <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                        <AlertDialogAction onClick={clearHistory} className={cn(buttonVariants({ variant: "destructive" }))}>
-                                            Yes, Clear History
-                                        </AlertDialogAction>
-                                    </AlertDialogFooter>
-                                </AlertDialogContent>
-                            </AlertDialog>
-                        </div>
-                    </div>
-                    <ScrollArea className="h-[450px] w-full border rounded-md">
-                        {filteredHistory.length > 0 ? (
-                            filteredHistory.map(renderHistoryItem)
-                        ) : (
-                            <div className="flex flex-col items-center justify-center h-full text-center p-4">
-                                <HistoryIcon className="h-10 w-10 text-muted-foreground/50 mb-3" />
-                                <p className="text-sm text-muted-foreground">
-                                     {historySearchTerm || filterFavorites ? 'No matching history items found.' : 'No history yet.'}
-                                </p>
-                                <p className="text-xs text-muted-foreground">
-                                    {!(historySearchTerm || filterFavorites) && 'Generated QR codes will appear here.'}
-                                </p>
-                            </div>
-                        )}
-                    </ScrollArea>
-                    <p className="text-xs text-muted-foreground">History is saved locally in your browser.</p>
-                     <p className="text-xs text-muted-foreground">Note: QR codes are saved to your history only upon explicit download. If you do not download the QR code, it will not appear in your history.</p>
-                </TabsContent>
+                 {/* History Tab Removed */}
 
              </Tabs>
 
@@ -1947,6 +1457,7 @@ export function QrCodeGenerator() {
             >
                 <Copy className="mr-2 h-4 w-4" /> Copy QR Data
             </Button>
+             {/* Removed Save to History Button */}
           </CardContent>
            <CardFooter>
               <Button onClick={onDownloadClick} className="w-full" disabled={!isQrGenerated}>
@@ -1955,6 +1466,6 @@ export function QrCodeGenerator() {
            </CardFooter>
         </Card>
     </div>
-    </>
+
   );
 }

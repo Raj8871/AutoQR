@@ -1,7 +1,7 @@
 
 import { Header } from '@/components/layout/Header';
 import { Footer } from '@/components/layout/Footer';
-import { QrCodeGenerator } from '@/components/QrCodeGenerator';
+import { QrCodeGenerator } from '@/components/QrCodeGenerator'; // Corrected import path if needed
 
 export default function GeneratorPage() {
   return (
