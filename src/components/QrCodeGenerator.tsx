@@ -14,8 +14,9 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Calendar } from "@/components/ui/calendar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { ScrollArea } from '@/components/ui/scroll-area';
 import {
-    Download, Image as ImageIcon, Link as LinkIcon, Phone, Mail, MessageSquare, MapPin, Calendar as CalendarIcon, Settings2, Palette, Clock, Wifi, Upload, Check, Trash2, Info, Eye, EyeOff, QrCode as QrCodeIcon, RefreshCcw, Star, Sparkles, Shapes, CreditCard, Copy, Pencil, StarIcon, Share2, X, QrCode, History, Gift, Music, User, Lock, Mic, PlayCircle, PauseCircle, FileAudio, Save // Added Mic, PlayCircle, PauseCircle, FileAudio, Save
+    Download, Image as ImageIcon, Link as LinkIcon, Phone, Mail, MessageSquare, MapPin, Calendar as CalendarIcon, Settings2, Palette, Clock, Wifi, Upload, Check, Trash2, Info, Eye, EyeOff, QrCode as QrCodeIcon, RefreshCcw, Star, Sparkles, Shapes, CreditCard, Copy, Pencil, StarIcon, Share2, X, QrCode, History, Gift, Music, User, Lock, Mic, PlayCircle, PauseCircle, FileAudio, Save, DownloadCloud, Zap, Paintbrush, ShieldCheck // Added Mic, PlayCircle, PauseCircle, FileAudio, Save
 } from 'lucide-react';
 import { format } from "date-fns";
 import { cn } from '@/lib/utils';
@@ -25,12 +26,14 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import * as Papa from 'papaparse';
 import JSZip from 'jszip';
-import { logFirebaseEvent } from '@/lib/firebase'; // Import logFirebaseEvent
+import { logFirebaseEvent } from '@/lib/firebase'; // Corrected import path
+import { z } from 'zod'; // Added missing import
+
 
 // --- Types ---
 
 // Define allowed QR types
-type QrType = 'url' | 'text' | 'email' | 'phone' | 'whatsapp' | 'sms' | 'location' | 'event' | 'wifi' | 'vcard' | 'upi' | 'audio-image' ; // Added audio-image
+type QrType = 'url' | 'text' | 'email' | 'phone' | 'whatsapp' | 'sms' | 'location' | 'event' | 'wifi' | 'vcard' | 'upi' | 'audio-image' ;
 
 // Define structure for history items
 interface HistoryItem {
@@ -240,7 +243,9 @@ const formatUpi = (data: Record<string, any>, toastFn: (options: Omit<Toast, 'id
     // Basic validation
     if (!upiId || !upiId.includes('@')) {
          // Don't toast immediately, rely on generateQrDataString for feedback
-         // toastFn({ variant: "destructive", title: "Invalid UPI ID", description: "Please enter a valid UPI ID (e.g., name@bank)." });
+         if (upiId) { // Only toast if the user actually entered something invalid
+             toastFn({ variant: "destructive", title: "Invalid UPI ID", description: "Please enter a valid UPI ID (e.g., name@bank)." });
+         }
          return ''; // Stop generation if invalid
     }
      // Amount validation: Must be positive if entered
@@ -250,6 +255,7 @@ const formatUpi = (data: Record<string, any>, toastFn: (options: Omit<Toast, 'id
     }
      // Amount required for UPI
      if (!data.upi_amount || isNaN(amount) || amount <= 0) {
+        // Don't toast immediately, rely on generateQrDataString for feedback
         // toastFn({ variant: "destructive", title: "Amount Required", description: "A positive amount is required for UPI payments." });
         return ''; // Stop generation if amount is missing or invalid, don't toast immediately
     }
@@ -655,8 +661,13 @@ export default function QrCodeGenerator() {
       const updateQrCode = async () => {
            try {
                 // Clear previous content *before* creating/updating
-                while (container.firstChild) {
-                   container.removeChild(container.firstChild);
+                while (container && container.firstChild) { // Add check for container existence
+                    try {
+                        container.removeChild(container.firstChild);
+                    } catch (e) {
+                         console.warn("Ignoring removeChild error during QR update:", e);
+                         break; // Stop trying if node is already gone
+                    }
                 }
 
                 if (!hasData) { // Don't create if no data
@@ -673,17 +684,16 @@ export default function QrCodeGenerator() {
                     setQrCodeInstance(instance);
 
                 } else {
-                     if (typeof instance.update === 'function') {
-                        await instance.update(qrOptions); // Await update
-                     } else {
-                          while (container.firstChild) { // Clear again just in case
-                             container.removeChild(container.firstChild);
-                          }
-                          instance = new QRCodeStyling(qrOptions);
-                          instance.append(container);
-                          didAppend = true;
-                          setQrCodeInstance(instance);
-                     }
+                     // Await update if available, otherwise recreate
+                    if (typeof instance.update === 'function') {
+                        await instance.update(qrOptions);
+                    } else {
+                        // Instance might be invalid, recreate
+                        instance = new QRCodeStyling(qrOptions);
+                        instance.append(container);
+                        didAppend = true;
+                        setQrCodeInstance(instance);
+                    }
                 }
 
                 // Generate SVG preview for history *after* successful generation/update
@@ -715,7 +725,7 @@ export default function QrCodeGenerator() {
                 // Check for specific QR code generation errors (like data overflow)
                 if (error?.message?.includes("length overflow")) {
                     toast({ variant: "destructive", title: "QR Generation Error", description: `Data is too long for the QR code standard (${error.message}). Please shorten input or use smaller files.`, duration: 7000 });
-                } else if (!error?.message?.includes('removeChild')) { // Avoid re-toasting the removeChild error
+                } else {
                      toast({ variant: "destructive", title: "QR Generation Error", description: `Could not create/update QR code: ${(error as Error).message}` });
                 }
                setQrCodeSvgDataUrl(null);
@@ -740,12 +750,11 @@ export default function QrCodeGenerator() {
 
        return () => {
             clearTimeout(debounceTimeout);
-            // Reduced cleanup: Let React handle unmounting. Avoid direct DOM manipulation here
-            // if possible, as it seems to cause the 'removeChild' error during fast updates/unmounts.
-             if (instance && container && didAppend) {
-                 // Potentially problematic cleanup - disabled to test fix
-                 // try { instance.clear(); } catch (e) { console.warn("Error clearing QR instance:", e); }
-             }
+             // Minimal cleanup: Avoid direct DOM manipulation here if it causes issues.
+             // Let React handle unmounting.
+             // if (instance && container && didAppend && container.contains(instance._canvas)) {
+             //    try { instance.clear(); } catch (e) { console.warn("Error clearing QR instance:", e); }
+             // }
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [options, qrType, inputDataState, toast]); // Removed qrCodeInstance from deps
@@ -1739,8 +1748,7 @@ export default function QrCodeGenerator() {
 
   // --- Main Render ---
   return (
-    <>
-    {/* Removed <FirebaseAnalyticsLogger /> */}
+    // Removed <FirebaseAnalyticsLogger /> wrapper
     <div className="w-full max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-8 px-4 py-6">
         {/* Options Panel */}
         <Card className="lg:col-span-2 order-2 lg:order-1 animate-fade-in">
@@ -2230,7 +2238,7 @@ export default function QrCodeGenerator() {
             <Button onClick={addToHistory} className="w-full" variant="secondary" disabled={!isQrGenerated}>
                  <Save className="mr-2 h-4 w-4" /> Save to History
             </Button>
-              <p className="text-xs text-muted-foreground text-center px-4">Note: QR codes are saved to your history only upon explicit action. If you do not manually save the QR code, it will not be added to your history.</p>
+            <p className="text-xs text-muted-foreground text-center px-4">Note: QR codes are saved to your history only upon explicit action. If you do not manually save the QR code, it will not be added to your history.</p>
           </CardContent>
            <CardFooter>
               <Button onClick={onDownloadClick} className="w-full" disabled={!isQrGenerated}>
@@ -2239,7 +2247,5 @@ export default function QrCodeGenerator() {
            </CardFooter>
         </Card>
     </div>
-    </>
   );
 }
-
