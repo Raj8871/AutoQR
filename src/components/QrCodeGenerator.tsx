@@ -23,6 +23,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
+import { logFirebaseEvent } from '@/lib/firebase'; // Import logFirebaseEvent
 
 // --- Types ---
 
@@ -710,6 +711,7 @@ export function QrCodeGenerator() {
                     instance.append(container);
                     didAppend = true; // Mark that we appended
                     setQrCodeInstance(instance);
+
                 } else {
                     // Update existing instance only if the container has children (it should after clearing and appending)
                      // Check if update method exists before calling
@@ -729,6 +731,9 @@ export function QrCodeGenerator() {
 
                 // Generate SVG preview for history *after* successful generation/update
                 if (instance) {
+                    // Log event to firebase
+                    logFirebaseEvent('qr_code_generated', { qrType: qrType });
+
                    // Delay slightly to ensure DOM update completes before getting data
                    await new Promise(resolve => setTimeout(resolve, 50));
                    const blob = await instance.getRawData('svg');
@@ -840,7 +845,7 @@ export function QrCodeGenerator() {
   // --- Input Handlers ---
   const handleInputChange = (key: string, value: any) => {
     // Validation for numeric fields
-    if ((key === 'latitude' || key === 'longitude' || key === 'upi_amount') && value && isNaN(Number(value))) {
+    if ((key === 'latitude' || key === 'upi_amount') && value && isNaN(Number(value))) {
          toast({ variant: "destructive", title: "Invalid Input", description: "Please enter a valid number." });
          return;
     }
@@ -1100,6 +1105,16 @@ export function QrCodeGenerator() {
           toast({ variant: "destructive", title: "Cannot Download", description: "Please generate a valid QR code first." });
           return;
       }
+
+      // Log the download event to Firebase Analytics
+       logFirebaseEvent('qr_code_downloaded', {
+           qrType: qrType,
+           fileExtension: fileExtension,
+           hasLogo: !!originalLogoUrl,
+           dataLength: qrData.length
+       });
+
+
       // Note: Real expiry needs backend logic. This is just a visual marker.
       if (expiryDate) toast({ title: "Download Info", description: "Note: Expiry is a visual marker only.", duration: 5000 });
 
@@ -1869,6 +1884,7 @@ export function QrCodeGenerator() {
                         )}
                     </ScrollArea>
                     <p className="text-xs text-muted-foreground">History is saved locally in your browser.</p>
+                     <p className="text-xs text-muted-foreground">Note: QR codes are saved to your history only upon explicit download. If you do not download the QR code, it will not appear in your history.</p>
                 </TabsContent>
 
              </Tabs>
@@ -1942,4 +1958,3 @@ export function QrCodeGenerator() {
     </>
   );
 }
-
