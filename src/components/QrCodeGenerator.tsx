@@ -6,15 +6,17 @@ import QRCodeStyling, { type Options as QRCodeStylingOptions, type FileExtension
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardHeader, CardTitle, CardFooter, CardDescription } from '@/components/ui/card'; // Added CardDescription
+import { Card, CardContent, CardHeader, CardTitle, CardFooter, CardDescription } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Slider } from "@/components/ui/slider";
 import { Textarea } from '@/components/ui/textarea';
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"; // Import Accordion
-import { Download, Image as ImageIcon, Link as LinkIcon, Phone, Mail, MessageSquare, MapPin, Calendar as CalendarIcon, Settings2, Palette, Clock, Wifi, Upload, Check, Trash2, Info, Eye, EyeOff, QrCode as QrCodeIcon, RefreshCcw, Star, Sparkles, Shapes, CreditCard, Copy, Pencil, StarIcon, Share2, X, QrCode } from 'lucide-react'; // Removed HistoryIcon
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import {
+    Download, Image as ImageIcon, Link as LinkIcon, Phone, Mail, MessageSquare, MapPin, Calendar as CalendarIcon, Settings2, Palette, Clock, Wifi, Upload, Check, Trash2, Info, Eye, EyeOff, QrCode as QrCodeIcon, RefreshCcw, Star, Sparkles, Shapes, CreditCard, Copy, Pencil, StarIcon, Share2, X, QrCode, History, Gift, Music // Added History, Gift, Music
+} from 'lucide-react';
 import { format } from "date-fns";
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
@@ -22,18 +24,25 @@ import type { Toast } from '@/hooks/use-toast'; // Import Toast type
 import { Checkbox } from '@/components/ui/checkbox';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
-import { logFirebaseEvent } from '@/lib/firebase'; // Import logFirebaseEvent
-import { z } from 'zod';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
 import * as Papa from 'papaparse';
 import JSZip from 'jszip';
-
+import { logFirebaseEvent } from '@/lib/firebase'; // Import logFirebaseEvent
 
 // --- Types ---
 
 // Define allowed QR types
-type QrType = 'url' | 'text' | 'email' | 'phone' | 'whatsapp' | 'sms' | 'location' | 'event' | 'wifi' | 'upi'; // Removed 'vcard', 'voice', 'password'
+type QrType = 'url' | 'text' | 'email' | 'phone' | 'whatsapp' | 'sms' | 'location' | 'event' | 'wifi' | 'upi' | 'audio-image'; // Added 'audio-image'
+
+// Define structure for history items
+interface HistoryItem {
+  id: string;
+  type: QrType;
+  data: Record<string, any>; // Original input data
+  options: QRCodeStylingOptions;
+  timestamp: number;
+  label?: string;
+  qrCodeSvgDataUrl: string | null; // Store the preview SVG
+}
 
 // QR type options
 const qrTypeOptions: { value: QrType; label: string; icon: React.ElementType; description: string }[] = [
@@ -47,6 +56,7 @@ const qrTypeOptions: { value: QrType; label: string; icon: React.ElementType; de
   { value: 'event', label: 'Calendar Event', icon: CalendarIcon, description: 'Add an event to the user\'s calendar (ICS format).' },
   { value: 'wifi', label: 'Wi-Fi Network', icon: Wifi, description: 'Connect to a Wi-Fi network automatically.' },
   { value: 'upi', label: 'UPI Payment', icon: CreditCard, description: 'Generate a QR for UPI payments with a specific amount and note.' },
+   { value: 'audio-image', label: 'Voice/Image Card', icon: Gift, description: 'Create a scannable card with an image and audio message.' }, // Added audio-image type
 ];
 
 // Define style types
@@ -61,7 +71,7 @@ const defaultOptions: QRCodeStylingOptions = {
   width: 256, // Default size for preview, will adapt responsively
   height: 256,
   type: 'svg',
-  data: '', // Default data is empty
+  data: 'https://linkspark.com', // Default placeholder URL
   image: '',
   dotsOptions: {
     color: '#008080', // Teal accent
@@ -174,14 +184,14 @@ const formatWifi = (data: Record<string, any>, toast: (options: Omit<Toast, 'id'
     const hidden = data.wifi_hidden ? 'true' : 'false';
 
     if (!ssid) {
-        toast({ variant: "destructive", title: "SSID Required", description: "Network Name (SSID) cannot be empty." });
-        return ''; // SSID is mandatory
+        // toast({ variant: "destructive", title: "SSID Required", description: "Network Name (SSID) cannot be empty." });
+        return ''; // SSID is mandatory, but don't toast immediately for better UX
     }
 
     // Password is required unless encryption is 'nopass'
     if (encryption !== 'nopass' && !password) {
-         toast({ variant: "destructive", title: "Password Required", description: "Password is required for WPA/WEP encryption." });
-         return '';
+        // toast({ variant: "destructive", title: "Password Required", description: "Password is required for WPA/WEP encryption." });
+         return ''; // Password mandatory for secured networks, but don't toast immediately
     }
 
     // Construct the string: WIFI:T:<encryption>;S:<ssid>;P:<password>;H:<hidden>;;
@@ -198,7 +208,12 @@ const formatUpi = (data: Record<string, any>, toast: (options: Omit<Toast, 'id'>
 
     // Basic validation
     if (!upiId || !upiId.includes('@')) {
-         toast({ variant: "destructive", title: "Invalid UPI ID", description: "Please enter a valid UPI ID (e.g., name@bank)." });
+        // Use toast directly if available, otherwise log an error
+        if (toast) {
+             toast({ variant: "destructive", title: "Invalid UPI ID", description: "Please enter a valid UPI ID (e.g., name@bank)." });
+        } else {
+            console.error("Invalid UPI ID:", upiId);
+        }
          return ''; // Stop generation if invalid
     }
      // Amount validation: Must be positive if entered
@@ -208,8 +223,8 @@ const formatUpi = (data: Record<string, any>, toast: (options: Omit<Toast, 'id'>
     }
      // Amount required for UPI
      if (!data.upi_amount || isNaN(amount) || amount <= 0) {
-        toast({ variant: "destructive", title: "Amount Required", description: "A positive amount is required for UPI payments." });
-        return ''; // Stop generation if amount is missing or invalid
+        // toast({ variant: "destructive", title: "Amount Required", description: "A positive amount is required for UPI payments." });
+        return ''; // Stop generation if amount is missing or invalid, don't toast immediately
     }
 
     // Construct URI: upi://pay?pa=<upi_id>&pn=<payee_name>&am=<amount>&cu=INR&tn=<note>
@@ -226,6 +241,49 @@ const formatUpi = (data: Record<string, any>, toast: (options: Omit<Toast, 'id'>
     }
 
     return upiString;
+};
+
+// Generate HTML landing page for Audio/Image Combo
+const generateAudioImageLandingPage = (data: Record<string, any>, toast: (options: Omit<Toast, 'id'>) => void): string => {
+    const { audio_image_title, audio_image_imageSrc, audio_image_audioSrc } = data;
+
+    if (!audio_image_imageSrc || !audio_image_audioSrc) {
+        // toast({ variant: "destructive", title: "Files Required", description: "Please upload both an image and an audio file." });
+        return ''; // Don't generate if files are missing, don't toast immediately
+    }
+
+    // Simple HTML structure with embedded data URIs
+    const htmlContent = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>${audio_image_title || 'Voice/Image Card'}</title>
+    <style>
+        body { font-family: sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; background-color: #f0f0f0; padding: 20px; box-sizing: border-box; }
+        .card { background-color: white; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); overflow: hidden; max-width: 400px; width: 100%; text-align: center; padding: 20px; box-sizing: border-box; }
+        img { max-width: 100%; height: auto; max-height: 300px; object-fit: cover; border-radius: 8px; margin-bottom: 15px; }
+        h2 { margin-top: 0; color: #333; }
+        audio { width: 100%; margin-top: 15px; }
+        @media (max-width: 450px) { .card { padding: 15px; } }
+    </style>
+</head>
+<body>
+    <div class="card">
+        ${audio_image_title ? `<h2>${audio_image_title}</h2>` : ''}
+        <img src="${audio_image_imageSrc}" alt="${audio_image_title || 'Uploaded Image'}">
+        <audio controls autoplay>
+            <source src="${audio_image_audioSrc}" type="${data.audio_image_audioType || 'audio/mpeg'}">
+            Your browser does not support the audio element.
+        </audio>
+    </div>
+</body>
+</html>`;
+
+    // Encode HTML content into a Data URI
+    const dataUri = `data:text/html;charset=utf-8,${encodeURIComponent(htmlContent)}`;
+    return dataUri;
 };
 
 // Process image for shape/opacity
@@ -289,64 +347,61 @@ const processImage = (
 // Generate the final data string for the QR code
 const generateQrDataString = (type: QrType, data: Record<string, any>, toast: (options: Omit<Toast, 'id'>) => void): string => {
     let targetData = '';
+    const MAX_DATA_LENGTH_WARN = 2000; // Lower warning threshold for complex data like Data URIs
+    const MAX_DATA_LENGTH_FAIL = 4296; // Absolute max for alphanumeric in QR spec (approx)
+
     try {
          switch (type) {
           case 'url':
              const url = data.url?.trim();
-             // Basic URL validation (simple check for protocol)
              if (url && (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('mailto:') || url.startsWith('tel:'))) {
                 targetData = url;
              } else if (url) {
-                 // Attempt to prepend https:// if missing and seems like a domain
                  if (!url.includes('://') && url.includes('.')) {
                     targetData = `https://${url}`;
                  } else {
                     toast({ variant: "destructive", title: "Invalid URL", description: "Please enter a valid URL starting with http:// or https://." });
-                    return ''; // Invalid URL format
+                    return '';
                  }
              } else {
-                // toast({ variant: "destructive", title: "URL Required", description: "Website URL cannot be empty." });
-                 return ''; // Empty URL
+                 // Return default placeholder URL if input is empty
+                 targetData = defaultOptions.data ?? '';
+                 // Clear the input field visually as well
+                 setInputData(prev => ({ ...prev, url: '' })); // Assuming setInputData is available in scope
              }
              break;
           case 'text':
                 targetData = data.text?.trim() || '';
                 if (!targetData) {
-                     // toast({ variant: "destructive", title: "Text Required", description: "Text content cannot be empty." });
-                     return '';
+                     return ''; // Empty text, don't toast immediately
                 }
                 break;
           case 'email':
             const emailTo = data.email?.trim();
-             // Basic email validation
              if (emailTo && emailTo.includes('@')) {
                  targetData = `mailto:${emailTo}?subject=${encodeURIComponent(data.subject || '')}&body=${encodeURIComponent(data.body || '')}`;
              } else if (emailTo) {
                   toast({ variant: "destructive", title: "Invalid Email", description: "Please enter a valid email address." });
                   return '';
              } else {
-                 // toast({ variant: "destructive", title: "Email Required", description: "Recipient email cannot be empty." });
-                  return ''; // Empty email
+                  return ''; // Empty email, don't toast immediately
              }
             break;
           case 'phone':
                 targetData = data.phone?.trim() ? `tel:${data.phone.trim()}` : '';
                 if (!targetData) {
-                    // toast({ variant: "destructive", title: "Phone Required", description: "Phone number cannot be empty." });
-                    return '';
+                    return ''; // Empty phone, don't toast immediately
                 }
                 break;
           case 'whatsapp':
-            // Basic check for digits only (allow leading '+')
             const phoneNum = (data.whatsapp_phone || '').replace(/[^0-9+]/g, '');
-            if (phoneNum && phoneNum.length > 5) { // Very basic length check
+            if (phoneNum && phoneNum.length > 5) {
                  targetData = `https://wa.me/${phoneNum.replace('+', '')}?text=${encodeURIComponent(data.whatsapp_message || '')}`;
-            } else if (data.whatsapp_phone) { // Only show error if user tried to enter something
+            } else if (data.whatsapp_phone) {
                 toast({ variant: "destructive", title: "Invalid Phone", description: "Please enter a valid WhatsApp number including country code." });
                 return '';
             } else {
-                 // toast({ variant: "destructive", title: "Phone Required", description: "WhatsApp number cannot be empty." });
-                 return '';
+                 return ''; // Empty WhatsApp number, don't toast immediately
             }
             break;
           case 'sms':
@@ -354,12 +409,10 @@ const generateQrDataString = (type: QrType, data: Record<string, any>, toast: (o
             if (smsPhoneNum) {
                  targetData = `sms:${smsPhoneNum}?body=${encodeURIComponent(data.sms_message || '')}`;
             } else {
-                // toast({ variant: "destructive", title: "Phone Required", description: "SMS recipient number cannot be empty." });
-                 return '';
+                 return ''; // Empty SMS number, don't toast immediately
             }
             break;
           case 'location':
-             // Requires both latitude and longitude, and they must be valid numbers
              const lat = parseFloat(data.latitude);
              const lon = parseFloat(data.longitude);
              if (!isNaN(lat) && !isNaN(lon) && lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180) {
@@ -368,44 +421,47 @@ const generateQrDataString = (type: QrType, data: Record<string, any>, toast: (o
                   toast({ variant: "destructive", title: "Invalid Coordinates", description: "Please enter valid latitude (-90 to 90) and longitude (-180 to 180)." });
                   return '';
              } else {
-                 // toast({ variant: "destructive", title: "Coordinates Required", description: "Latitude and Longitude cannot be empty." });
-                  return '';
+                  return ''; // Empty coordinates, don't toast immediately
              }
              break;
           case 'event':
-              // Validation inside formatICS, pass toast
               targetData = formatICS(data, toast);
-              // formatICS handles its own validation and returns '' on failure
               if (!targetData && (data.event_summary || data.event_start)) {
-                 // toast({ variant: "destructive", title: "Event Data Required", description: "Event Title and Start Date/Time are required." });
-                 // formatICS might have already shown a specific toast, avoid double-toasting
-                 // console.warn("ICS data generation failed.");
-                 return ''; // Explicitly return empty string if formatICS failed
+                 // formatICS might have already shown a specific toast
+                 return '';
               }
               if (!targetData && !data.event_summary && !data.event_start) {
-                  return ''; // Return empty if mandatory fields are missing initially
+                  return '';
               }
               break;
           case 'wifi':
                targetData = formatWifi(data, toast);
-                // formatWifi handles its own validation
-               if (!targetData && (data.wifi_ssid)) { // Return empty if validation fails but SSID was entered
+               if (!targetData && (data.wifi_ssid)) {
                     return '';
                }
-               if (!targetData && !data.wifi_ssid) { // Return empty if SSID is initially missing
+               if (!targetData && !data.wifi_ssid) {
                     return '';
                }
                break;
-          case 'upi': // Added UPI case
+          case 'upi':
                targetData = formatUpi(data, toast);
-                // formatUpi handles its own validation
-               if (!targetData && (data.upi_id || data.upi_amount)) { // Return empty if validation fails but required fields were attempted
+               if (!targetData && (data.upi_id || data.upi_amount)) {
                   return '';
                }
-                if (!targetData && (!data.upi_id || !data.upi_amount)) { // Return empty if required fields are initially missing
+                if (!targetData && (!data.upi_id || !data.upi_amount)) {
                    return '';
                 }
                break;
+           case 'audio-image': // Added audio-image case
+                targetData = generateAudioImageLandingPage(data, toast);
+                if (!targetData && (data.audio_image_imageSrc || data.audio_image_audioSrc)) {
+                    // generateAudioImageLandingPage might have already shown a toast
+                    return '';
+                }
+                 if (!targetData && !data.audio_image_imageSrc && !data.audio_image_audioSrc) {
+                     return ''; // Return empty if files are missing initially
+                 }
+                break;
           default: targetData = '';
         }
     } catch (error) {
@@ -414,16 +470,13 @@ const generateQrDataString = (type: QrType, data: Record<string, any>, toast: (o
         return '';
     }
 
-    // Final check for excessively long data which might cause QR generation errors
-    const MAX_DATA_LENGTH_WARN = 2500; // Warn earlier
-    const MAX_DATA_LENGTH_FAIL = 4296; // Absolute max for alphanumeric in QR spec (approx)
-
+    // Final check for excessively long data
      if (targetData.length > MAX_DATA_LENGTH_FAIL) {
          console.error(`QR data exceeds maximum length (${targetData.length} > ${MAX_DATA_LENGTH_FAIL}). Cannot generate.`);
          toast({
              variant: "destructive",
              title: "Data Too Long",
-             description: `Input data is too long (${targetData.length} characters) and exceeds the QR code limit. Please shorten it significantly. Max ~${MAX_DATA_LENGTH_FAIL} chars.`,
+             description: `Input data is too long (${targetData.length} characters) and exceeds the QR code limit (~${MAX_DATA_LENGTH_FAIL} chars). Please shorten it or use smaller files (for audio/image).`,
              duration: 10000
          });
          return ''; // Stop generation
@@ -432,69 +485,104 @@ const generateQrDataString = (type: QrType, data: Record<string, any>, toast: (o
          toast({
              variant: "default", // Warning, not error yet
              title: "Data Length Warning",
-             description: `The input data is quite long (${targetData.length} characters). The generated QR code might be complex and harder to scan, especially on lower-resolution screens or when printed small. Consider shortening it if possible.`,
-             duration: 7000
+             description: `The input data is quite long (${targetData.length} characters). The generated QR code might be complex and harder to scan, especially on lower-resolution screens or when printed small. Consider shortening text, using lower resolution images/audio if possible, or linking to hosted content instead of embedding.`,
+             duration: 8000
          });
      }
 
     return targetData;
 };
 
+
+// Need to hoist this function definition above its usage in generateQrDataString
+const setInputData = (updater: React.SetStateAction<Record<string, any>>) => {
+    // Implementation will be provided by the useState hook later
+    console.warn("setInputData called before initialization. This might happen if generateQrDataString is called before the component mounts.");
+};
+
+
 export function QrCodeGenerator() {
   const { toast } = useToast(); // Get toast instance
 
   // Core QR State
   const [qrType, setQrType] = useState<QrType>('url');
-  const [inputData, setInputData] = useState<Record<string, any>>({ url: '' }); // Default with empty url
+  const [inputDataState, setInputDataState] = useState<Record<string, any>>({ url: defaultOptions.data ?? '' }); // Initialize with default data
   const [options, setOptions] = useState<QRCodeStylingOptions>(defaultOptions);
   const [qrCodeInstance, setQrCodeInstance] = useState<QRCodeStyling | null>(null);
   const [qrCodeSvgDataUrl, setQrCodeSvgDataUrl] = useState<string | null>(null);
-  const [isQrGenerated, setIsQrGenerated] = useState<boolean>(false);
-  const [qrPreviewKey, setQrPreviewKey] = useState<number>(Date.now()); // Use timestamp for key
+  const [isQrGenerated, setIsQrGenerated] = useState<boolean>(true); // Start as true due to default data
+  const [qrPreviewKey, setQrPreviewKey] = useState<number>(Date.now());
 
   // Customization State
   const [fileExtension, setFileExtension] = useState<FileExtension>('png');
   const [logoPreviewUrl, setLogoPreviewUrl] = useState<string | null>(null);
-  const [originalLogoUrl, setOriginalLogoUrl] = useState<string | null>(null); // Keep original for re-processing
+  const [originalLogoUrl, setOriginalLogoUrl] = useState<string | null>(null);
   const [logoSize, setLogoSize] = useState<number>(defaultOptions.imageOptions?.imageSize ? defaultOptions.imageOptions.imageSize * 100 : 40);
   const [logoShape, setLogoShape] = useState<'square' | 'circle'>('square');
   const [logoOpacity, setLogoOpacity] = useState<number>(100);
   const [qrLabel, setQrLabel] = useState<string>('');
   const [expiryDate, setExpiryDate] = useState<Date | undefined>(undefined);
-  const [expiryTime, setExpiryTime] = useState<string>("00:00"); // Default time
+  const [expiryTime, setExpiryTime] = useState<string>("00:00");
   const [wifiPasswordVisible, setWifiPasswordVisible] = useState<boolean>(false);
 
+  // History State
+  const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [showHistory, setShowHistory] = useState(false); // State to control history panel visibility
+
+  // Bulk QR State
+  const [bulkQrCodes, setBulkQrCodes] = useState<string[]>([]);
+  const [csvFile, setCsvFile] = useState<File | null>(null);
+  const [csvData, setCsvData] = useState<any[]>([]);
+
+  // Audio/Image State
+  const [audioImageUrl, setAudioImageUrl] = useState<string | null>(null);
+  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const audioImageInputRef = useRef<HTMLInputElement>(null);
+  const audioInputRef = useRef<HTMLInputElement>(null);
 
   // Refs
   const logoInputRef = useRef<HTMLInputElement>(null);
-  const qrCodeRef = useRef<HTMLDivElement>(null); // Ref for the container div
+  const qrCodeRef = useRef<HTMLDivElement>(null);
 
-   // --- Logo Handling ---
-  const removeLogo = useCallback(() => {
+    // Assign the state setter to the hoisted function definition
+    // This is a bit hacky, ideally refactor generateQrDataString to be inside the component or pass setters
+    useEffect(() => {
+        // @ts-ignore - Overwriting the placeholder function
+        setInputData = setInputDataState;
+    }, [setInputDataState]);
+
+
+  // --- Load History ---
+  useEffect(() => {
+    const loadedHistory = getLocalStorageItem<HistoryItem[]>('qrHistory', []);
+    // Filter out any invalid items just in case
+    setHistory(loadedHistory.filter(item => item && item.id && item.type && item.data && item.options && item.timestamp));
+  }, []);
+
+  // --- Logo Handling ---
+   const removeLogo = useCallback(() => {
      setOriginalLogoUrl(null);
      setLogoPreviewUrl(null);
-     // Reset options related to image
      setOptions(prev => ({
          ...prev,
          image: '',
          imageOptions: {
              ...(prev.imageOptions ?? defaultOptions.imageOptions),
              margin: 5,
-             imageSize: 0.4 // Reset size in options as well
+             imageSize: 0.4
          },
      }));
-     // Reset UI state
      setLogoSize(40);
      setLogoShape('square');
      setLogoOpacity(100);
-     if (logoInputRef.current) logoInputRef.current.value = ''; // Clear file input
+     if (logoInputRef.current) logoInputRef.current.value = '';
   }, []);
 
 
   // --- QR Data Generation ---
   const generateQrData = useCallback((): string => {
-      return generateQrDataString(qrType, inputData, toast); // Pass toast
-  }, [qrType, inputData, toast]); // Added toast dependency
+      return generateQrDataString(qrType, inputDataState, toast);
+  }, [qrType, inputDataState, toast]);
 
 
   // --- QR Code Instance & Preview Update ---
@@ -519,7 +607,6 @@ export function QrCodeGenerator() {
       const updateQrCode = async () => {
            try {
                 // Clear previous content *before* creating/updating
-                // This helps prevent the "removeChild" error
                 while (container.firstChild) {
                    container.removeChild(container.firstChild);
                 }
@@ -538,12 +625,9 @@ export function QrCodeGenerator() {
                     setQrCodeInstance(instance);
 
                 } else {
-                    // Update existing instance only if the container has children (it should after clearing and appending)
-                     // Check if update method exists before calling
                      if (typeof instance.update === 'function') {
-                        instance.update(qrOptions);
+                        await instance.update(qrOptions); // Await update
                      } else {
-                         // Fallback: create new instance if update is not available (should not happen with current library version)
                           while (container.firstChild) { // Clear again just in case
                              container.removeChild(container.firstChild);
                           }
@@ -556,8 +640,8 @@ export function QrCodeGenerator() {
 
                 // Generate SVG preview for history *after* successful generation/update
                 if (instance) {
-                    // Log event to firebase
-                    logFirebaseEvent('qr_code_generated', { qrType: qrType });
+                   // Log event to firebase
+                   logFirebaseEvent('qr_code_generated', { qrType: qrType });
 
                    // Delay slightly to ensure DOM update completes before getting data
                    await new Promise(resolve => setTimeout(resolve, 50));
@@ -578,34 +662,177 @@ export function QrCodeGenerator() {
                      setQrCodeSvgDataUrl(null); // Clear preview if no instance
                 }
 
-           } catch (error: any) { // Catch specific errors if possible
-               console.error("Error creating/updating QR code instance:", error);
-               // Check for specific overflow error
-               if (error?.message?.includes("overflow")) {
-                  toast({ variant: "destructive", title: "QR Generation Error", description: `Data is too long for the QR code standard. Please shorten your input. (${error.message})`, duration: 7000 });
-               } else {
-                  toast({ variant: "destructive", title: "QR Generation Error", description: `Could not create/update QR code: ${(error as Error).message}` });
-               }
+           } catch (error: any) {
+                console.error("Error creating/updating QR code instance:", error);
+                // Check for specific QR code generation errors (like data overflow)
+                if (error?.message?.includes("overflow")) {
+                    toast({ variant: "destructive", title: "QR Generation Error", description: `Data is too long for the QR code standard (${error.message}). Please shorten input or use smaller files.`, duration: 7000 });
+                } else if (!error?.message?.includes('removeChild')) { // Avoid re-toasting the removeChild error
+                     toast({ variant: "destructive", title: "QR Generation Error", description: `Could not create/update QR code: ${(error as Error).message}` });
+                }
                setQrCodeSvgDataUrl(null);
-               setQrCodeInstance(null); // Clear instance on error
-               setIsQrGenerated(false); // Mark as not generated on error
-               // Ensure container is clear on error
+               setQrCodeInstance(null);
+               setIsQrGenerated(false);
+                // Cautiously clear container, handling potential errors
                if (container) {
                    while (container.firstChild) {
-                       container.removeChild(container.firstChild);
+                       try {
+                            container.removeChild(container.firstChild);
+                       } catch {
+                            // Ignore if child already removed, break loop
+                            break;
+                       }
                    }
                }
            }
       };
 
-      // Debounce the update to prevent rapid re-renders on input change
+      // Debounce the update
       const debounceTimeout = setTimeout(updateQrCode, 300);
 
-      return () => {
-           clearTimeout(debounceTimeout);
-       };
+       return () => {
+            clearTimeout(debounceTimeout);
+            // Reduced cleanup: Let React handle unmounting. Avoid direct DOM manipulation here
+            // if possible, as it seems to cause the 'removeChild' error during fast updates/unmounts.
+        };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [options, qrType, inputData, toast]); // Removed qrLabel, addToHistory dependencies
+  }, [options, qrType, inputDataState, toast]); // Removed history-related dependencies
+
+
+  // --- History Management ---
+  const addToHistory = useCallback(() => {
+     const qrData = generateQrData();
+     if (!qrData || !qrCodeSvgDataUrl) {
+         toast({ variant: "destructive", title: "Cannot Save", description: "Please generate a valid QR code first." });
+         return;
+     }
+
+     const newItem: HistoryItem = {
+       id: Date.now().toString(), // Simple ID based on timestamp
+       type: qrType,
+       data: { ...inputDataState }, // Clone input data
+       options: { ...options, data: '' }, // Clone options, clear data for storage
+       timestamp: Date.now(),
+       label: qrLabel || `${qrType} - ${format(new Date(), 'PP p')}`, // Default label
+       qrCodeSvgDataUrl: qrCodeSvgDataUrl, // Store the generated SVG preview
+     };
+
+     // Prevent duplicates based on content and type (simple check)
+     const isDuplicate = history.some(item => item.type === newItem.type && JSON.stringify(item.data) === JSON.stringify(newItem.data));
+
+     if (isDuplicate) {
+        toast({ title: "Already in History", description: "This QR configuration is already saved." });
+        return;
+     }
+
+
+     setHistory(prev => {
+        const updatedHistory = [newItem, ...prev].slice(0, 50); // Keep max 50 items
+        setLocalStorageItem('qrHistory', updatedHistory, toast);
+         logFirebaseEvent('qr_history_saved', { qrType: qrType, itemCount: updatedHistory.length });
+        toast({ title: "Saved to History", description: `"${newItem.label}" added.` });
+        return updatedHistory;
+     });
+ }, [generateQrData, qrCodeSvgDataUrl, qrType, inputDataState, options, qrLabel, history, toast]);
+
+
+   // --- Logo Shape and Opacity Application ---
+   const applyLogoShapeAndOpacity = useCallback(async (imageUrl: string, shape: 'square' | 'circle', opacity: number) => {
+     try {
+       const currentImageOptions = options.imageOptions ?? defaultOptions.imageOptions;
+       const imageSize = Math.max(0.1, Math.min(0.5, logoSize / 100));
+       const hideDots = currentImageOptions.hideBackgroundDots ?? true;
+       const margin = currentImageOptions.margin ?? 5;
+
+       const processingCanvasSize = 200;
+       const processedImageUrl = await processImage(imageUrl, shape, processingCanvasSize, opacity);
+
+       setLogoPreviewUrl(processedImageUrl);
+        setOptions(prev => ({
+            ...prev,
+            image: processedImageUrl,
+            imageOptions: {
+                ...currentImageOptions,
+                imageSize: imageSize,
+                hideBackgroundDots: hideDots,
+                margin: margin,
+             }
+        }));
+     } catch (error) {
+         console.error("Error processing logo image:", error);
+         toast({ variant: "destructive", title: "Logo Error", description: "Could not process the logo image. Using original." });
+         setLogoPreviewUrl(imageUrl);
+          setOptions(prev => ({
+              ...prev,
+              image: imageUrl,
+               imageOptions: {
+                 ...(options.imageOptions ?? defaultOptions.imageOptions),
+                 imageSize: Math.max(0.1, Math.min(0.5, logoSize / 100)),
+              }
+          }));
+     }
+  }, [logoSize, options.imageOptions, toast]);
+
+
+  const loadFromHistory = useCallback((item: HistoryItem) => {
+     // Log event
+      logFirebaseEvent('qr_history_loaded', { qrType: item.type });
+
+     setQrType(item.type);
+     setInputDataState({ ...item.data }); // Restore input data
+     // Restore options, including logo if it existed
+     const restoredOptions = { ...item.options, data: generateQrDataString(item.type, item.data, toast) }; // Regenerate data string
+     setOptions(restoredOptions);
+
+      // Restore logo related state if present in options
+     if (item.options.image) {
+         const originalSavedLogo = item.data.logoUrl || item.options.image; // Prefer original if saved
+         const currentLogoShape = item.data.logoShape || 'square';
+         const currentLogoOpacity = (item.data.logoOpacity || 100) / 100;
+
+         setOriginalLogoUrl(originalSavedLogo);
+         setLogoSize( (item.options.imageOptions?.imageSize ?? 0.4) * 100);
+         setLogoShape(currentLogoShape);
+         setLogoOpacity(item.data.logoOpacity || 100);
+
+         // Re-apply shape/opacity based on restored values
+         applyLogoShapeAndOpacity(originalSavedLogo, currentLogoShape, currentLogoOpacity);
+
+     } else {
+         removeLogo(); // Clear logo if none in history item
+     }
+
+     setQrLabel(item.label || '');
+     // Set expiry date if it was present (visual only)
+     setExpiryDate(item.data.expiryDate ? new Date(item.data.expiryDate) : undefined);
+     setExpiryTime(item.data.expiryTime || "00:00");
+
+     // Update preview state
+     setIsQrGenerated(!!restoredOptions.data);
+     setQrCodeSvgDataUrl(item.qrCodeSvgDataUrl);
+     setQrPreviewKey(Date.now()); // Force preview update
+     toast({ title: "Loaded from History", description: `Restored QR code configuration from ${format(item.timestamp, 'PP pp')}.` });
+     setShowHistory(false); // Close history panel after loading
+   // eslint-disable-next-line react-hooks/exhaustive-deps
+   }, [removeLogo, toast, applyLogoShapeAndOpacity]); // Dependencies
+
+  const deleteFromHistory = useCallback((id: string) => {
+     setHistory(prev => {
+       const updatedHistory = prev.filter(item => item.id !== id);
+       setLocalStorageItem('qrHistory', updatedHistory, toast);
+        logFirebaseEvent('qr_history_deleted', { itemCount: updatedHistory.length });
+       toast({ title: "Removed from History", variant: "destructive" });
+       return updatedHistory;
+     });
+   }, [toast]);
+
+  const clearHistory = useCallback(() => {
+     setHistory([]);
+     setLocalStorageItem('qrHistory', [], toast);
+      logFirebaseEvent('qr_history_cleared');
+     toast({ title: "History Cleared", variant: "destructive" });
+     setShowHistory(false); // Close panel after clearing
+  }, [toast]);
 
 
   // --- Input Handlers ---
@@ -617,7 +844,6 @@ export function QrCodeGenerator() {
     }
      if (key === 'upi_amount' && value && Number(value) < 0) {
          toast({ variant: "destructive", title: "Invalid Amount", description: "Amount cannot be negative." });
-         // Optionally reset or clamp the value: setInputData(prev => ({ ...prev, [key]: '0.01' }));
          return;
      }
      // Latitude/Longitude validation
@@ -630,16 +856,16 @@ export function QrCodeGenerator() {
          return;
      }
 
-    setInputData(prev => ({ ...prev, [key]: value }));
+    setInputDataState(prev => ({ ...prev, [key]: value }));
   };
 
   const handleCheckboxChange = (key: string, checked: boolean | 'indeterminate') => {
-     setInputData(prev => ({ ...prev, [key]: checked === true })); // Treat indeterminate as false
+     setInputDataState(prev => ({ ...prev, [key]: checked === true })); // Treat indeterminate as false
    };
 
   // Consolidate date/time updates for events
   const handleEventDateTimeChange = (key: 'event_start' | 'event_end', value: string) => {
-      setInputData(prev => {
+      setInputDataState(prev => {
           const currentStartDate = prev.event_start ? new Date(prev.event_start) : null;
           const currentEndDate = prev.event_end ? new Date(prev.event_end) : null;
           let newDate: Date | null = null;
@@ -657,6 +883,7 @@ export function QrCodeGenerator() {
               // If end date exists and is before new start date, adjust end date
               if (currentEndDate && currentEndDate < newDate) {
                   const adjustedEndDate = new Date(newDate.getTime() + 60 * 60 * 1000); // Default 1 hour duration
+                   toast({ title: "End Date Adjusted", description: "End date automatically set to 1 hour after the new start date." });
                   return { ...prev, event_start: newDate, event_end: adjustedEndDate };
               }
               return { ...prev, event_start: newDate };
@@ -710,6 +937,9 @@ export function QrCodeGenerator() {
          ...prev,
          imageOptions: { ...(prev.imageOptions ?? defaultOptions.imageOptions), imageSize: imageSizeValue }
      }));
+     // Store logo size in inputData for history restoration
+     setInputDataState(prev => ({ ...prev, logoSize: sizePercent }));
+
      // Re-process logo if it exists
      if (originalLogoUrl) {
           applyLogoShapeAndOpacity(originalLogoUrl, logoShape, logoOpacity / 100);
@@ -718,6 +948,8 @@ export function QrCodeGenerator() {
 
  const handleLogoShapeChange = (value: 'square' | 'circle') => {
      setLogoShape(value);
+      // Store logo shape in inputData for history restoration
+     setInputDataState(prev => ({ ...prev, logoShape: value }));
      if (originalLogoUrl) {
          applyLogoShapeAndOpacity(originalLogoUrl, value, logoOpacity / 100);
      }
@@ -725,57 +957,23 @@ export function QrCodeGenerator() {
 
  const handleLogoOpacityChange = (value: number[]) => {
      const opacityPercent = value[0];
+      setLogoOpacity(opacityPercent); // Update slider state
+       // Store logo opacity in inputData for history restoration
+     setInputDataState(prev => ({ ...prev, logoOpacity: opacityPercent }));
       if (originalLogoUrl) {
          applyLogoShapeAndOpacity(originalLogoUrl, logoShape, opacityPercent / 100);
      }
  }
 
  const handleHideDotsChange = (checked: boolean | 'indeterminate') => {
+      const hide = checked === true;
       setOptions(prev => ({
           ...prev,
-          imageOptions: { ...(prev.imageOptions ?? defaultOptions.imageOptions), hideBackgroundDots: checked === true }
+          imageOptions: { ...(prev.imageOptions ?? defaultOptions.imageOptions), hideBackgroundDots: hide }
       }));
+       // Store hide dots setting in inputData for history restoration
+      setInputDataState(prev => ({ ...prev, hideBackgroundDots: hide }));
  }
-
-
-  // --- Logo Handling ---
- const applyLogoShapeAndOpacity = useCallback(async (imageUrl: string, shape: 'square' | 'circle', opacity: number) => {
-    try {
-      const currentImageOptions = options.imageOptions ?? defaultOptions.imageOptions;
-      const imageSize = Math.max(0.1, Math.min(0.5, logoSize / 100)); // Get current size from state
-      const hideDots = currentImageOptions.hideBackgroundDots ?? true;
-      const margin = currentImageOptions.margin ?? 5;
-
-      // Use a fixed reasonable size for the canvas processing to avoid performance issues
-      const processingCanvasSize = 200;
-      const processedImageUrl = await processImage(imageUrl, shape, processingCanvasSize, opacity);
-
-      setLogoPreviewUrl(processedImageUrl); // Update UI preview
-       setOptions(prev => ({
-           ...prev,
-           image: processedImageUrl, // Use processed image for QR generation
-           imageOptions: {
-               ...currentImageOptions, // Keep other settings like crossOrigin
-               imageSize: imageSize, // Ensure size is correctly applied
-               hideBackgroundDots: hideDots, // Ensure hide dots setting is kept
-               margin: margin, // Ensure margin is kept
-            }
-       }));
-    } catch (error) {
-        console.error("Error processing logo image:", error);
-        toast({ variant: "destructive", title: "Logo Error", description: "Could not process the logo image. Using original." });
-        setLogoPreviewUrl(imageUrl); // Fallback to original URL on error
-         setOptions(prev => ({
-             ...prev,
-             image: imageUrl, // Use original image in options
-              imageOptions: {
-                ...(options.imageOptions ?? defaultOptions.imageOptions),
-                imageSize: Math.max(0.1, Math.min(0.5, logoSize / 100)), // Still apply size
-             }
-         }));
-    }
- // eslint-disable-next-line react-hooks/exhaustive-deps
- }, [logoSize, options.imageOptions, toast]); // Added toast dependency
 
 
  const handleLogoUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -794,15 +992,63 @@ export function QrCodeGenerator() {
         const imageUrl = reader.result as string;
         setOriginalLogoUrl(imageUrl); // Store the original
         applyLogoShapeAndOpacity(imageUrl, logoShape, logoOpacity / 100); // Apply current shape/opacity
+         // Also store in inputData for history
+        setInputDataState(prev => ({ ...prev, logoUrl: imageUrl }));
       };
       reader.onerror = () => toast({ variant: "destructive", title: "File Read Error", description: "Could not read the selected file." });
       reader.readAsDataURL(file);
     }
- }, [logoShape, logoOpacity, applyLogoShapeAndOpacity, toast]); // Added toast dependency
+ }, [logoShape, logoOpacity, applyLogoShapeAndOpacity, toast]);
 
  const triggerLogoUpload = () => logoInputRef.current?.click();
 
 
+// --- Audio + Image Combo Handling ---
+const handleAudioImageUpload = (type: 'image' | 'audio', e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const maxSize = 5 * 1024 * 1024; // 5MB limit
+
+    if (type === 'image') {
+        if (!['image/png', 'image/jpeg', 'image/gif', 'image/webp'].includes(file.type)) {
+            toast({ variant: "destructive", title: "Invalid Image Type", description: "Please upload a PNG, JPEG, GIF, or WEBP image." });
+            return;
+        }
+         if (file.size > maxSize) {
+             toast({ variant: "destructive", title: "Image Too Large", description: "Image should be less than 5MB." });
+             return;
+        }
+        const reader = new FileReader();
+        reader.onloadend = () => {
+            const imageUrl = reader.result as string;
+            setAudioImageUrl(imageUrl);
+            setInputDataState(prev => ({ ...prev, audio_image_imageSrc: imageUrl, audio_image_imageName: file.name })); // Store Data URI and name
+        };
+        reader.onerror = () => toast({ variant: "destructive", title: "File Read Error", description: "Could not read the image file." });
+        reader.readAsDataURL(file);
+    } else if (type === 'audio') {
+         if (!['audio/mpeg', 'audio/wav', 'audio/ogg', 'audio/mp3'].includes(file.type)) { // Added mp3
+            toast({ variant: "destructive", title: "Invalid Audio Type", description: "Please upload an MP3, WAV, or OGG audio file." });
+            return;
+        }
+         if (file.size > maxSize) {
+             toast({ variant: "destructive", title: "Audio File Too Large", description: "Audio file should be less than 5MB." });
+             return;
+        }
+        const reader = new FileReader();
+        reader.onloadend = () => {
+            const audioUrl = reader.result as string;
+            setAudioUrl(audioUrl);
+            setInputDataState(prev => ({ ...prev, audio_image_audioSrc: audioUrl, audio_image_audioName: file.name, audio_image_audioType: file.type })); // Store Data URI, name and type
+        };
+        reader.onerror = () => toast({ variant: "destructive", title: "File Read Error", description: "Could not read the audio file." });
+        reader.readAsDataURL(file);
+    }
+};
+
+const triggerAudioImageUpload = () => audioImageInputRef.current?.click();
+const triggerAudioUpload = () => audioInputRef.current?.click();
 
 
  // --- Expiry Handling ---
@@ -823,6 +1069,8 @@ export function QrCodeGenerator() {
            toast({ title: "Expiry Removed", description: "QR code expiry marker removed." });
       }
        setExpiryDate(expiry);
+       // Store expiry in inputData for history
+       setInputDataState(prev => ({ ...prev, expiryDate: expiry?.toISOString(), expiryTime: expiry ? format(expiry, "HH:mm") : "00:00" }));
  };
 
  // Handles selection from the Calendar popover
@@ -843,31 +1091,32 @@ export function QrCodeGenerator() {
      if (date && time) {
          try {
              const [hours, minutes] = time.split(':').map(Number);
+             if (isNaN(hours) || isNaN(minutes)) throw new Error("Invalid time format"); // Add validation
              combinedDate = new Date(date);
              combinedDate.setHours(hours, minutes, 0, 0); // Set H, M, S, MS
 
              if (combinedDate < new Date()) {
                  toast({ variant: "destructive", title: "Invalid Date/Time", description: "Expiry cannot be in the past." });
-                 // Optionally reset date/time or keep previous valid state
-                 // For now, just show error and don't update expiryDate
                  return;
              }
               setExpiryDate(combinedDate);
               toast({ title: "Expiry Reminder Set", description: `QR code visually marked to expire on ${format(combinedDate, "PPP 'at' HH:mm")}. (Backend needed for real expiry)` });
+              // Store expiry in inputData for history
+             setInputDataState(prev => ({ ...prev, expiryDate: combinedDate?.toISOString(), expiryTime: time }));
 
          } catch {
               toast({ variant: "destructive", title: "Invalid Time", description: "Please enter a valid time." });
               return; // Don't update if time parsing fails
          }
      } else {
-         // If either date or time is missing, clear the expiry
-         const hadExpiry = !!expiryDate; // Check if expiry was previously set
+         const hadExpiry = !!expiryDate;
          setExpiryDate(undefined);
-         // Optionally reset time input if date is cleared
          if (!date) setExpiryTime("00:00");
-         if (hadExpiry) { // Only log removal if it was actually set before
+         if (hadExpiry) {
              toast({ title: "Expiry Removed", description: "QR code expiry marker removed." });
          }
+          // Clear expiry in inputData for history
+         setInputDataState(prev => ({ ...prev, expiryDate: undefined, expiryTime: "00:00" }));
      }
  };
 
@@ -880,7 +1129,7 @@ export function QrCodeGenerator() {
           return;
       }
 
-      // Log the download event to Firebase Analytics
+      // Log the download event
        logFirebaseEvent('qr_code_downloaded', {
            qrType: qrType,
            fileExtension: fileExtension,
@@ -889,23 +1138,20 @@ export function QrCodeGenerator() {
        });
 
 
-      // Note: Real expiry needs backend logic. This is just a visual marker.
+      // Note: Real expiry needs backend logic.
       if (expiryDate) toast({ title: "Download Info", description: "Note: Expiry is a visual marker only.", duration: 5000 });
 
-       // Ensure width/height are valid numbers
-       const downloadWidth = typeof options.width === 'number' && options.width > 0 ? options.width : 512; // Default to 512 for download if invalid
+       const downloadWidth = typeof options.width === 'number' && options.width > 0 ? options.width : 512;
        const downloadHeight = typeof options.height === 'number' && options.height > 0 ? options.height : 512;
 
-      // Recreate options object for download to ensure fresh data and correct type
       const downloadOptions: QRCodeStylingOptions = {
           ...options,
-          data: qrData, // Use currently generated data
-          type: fileExtension === 'svg' ? 'svg' : 'canvas', // Set type based on extension
+          data: qrData,
+          type: fileExtension === 'svg' ? 'svg' : 'canvas',
           width: downloadWidth,
           height: downloadHeight,
       };
 
-      // Create a temporary instance specifically for download
       const downloadInstance = new QRCodeStyling(downloadOptions);
 
 
@@ -917,7 +1163,7 @@ export function QrCodeGenerator() {
           console.error("Error downloading QR code:", error);
           toast({ variant: "destructive", title: "Download Failed", description: "Could not download the QR code. Please try again." });
       }
-  }, [qrCodeInstance, options, fileExtension, qrType, generateQrData, isQrGenerated, expiryDate, qrLabel, toast]); // Added toast dependency
+  }, [qrCodeInstance, options, fileExtension, qrType, generateQrData, isQrGenerated, expiryDate, qrLabel, toast, originalLogoUrl]); // Added originalLogoUrl dependency
 
 
 
@@ -941,14 +1187,14 @@ export function QrCodeGenerator() {
                             return (
                                 <div className="space-y-2">
                                 <Label htmlFor="qr-url">Website URL *</Label>
-                                <Input id="qr-url" type="url" value={inputData.url ?? ''} onChange={(e) => handleInputChange('url', e.target.value)} placeholder="https://example.com" required/>
+                                <Input id="qr-url" type="url" value={inputDataState.url ?? ''} onChange={(e) => handleInputChange('url', e.target.value)} placeholder="https://example.com" required/>
                                 </div>
                             );
                         case 'text':
                             return (
                                 <div className="space-y-2">
                                 <Label htmlFor="qr-text">Text Content *</Label>
-                                <Textarea id="qr-text" value={inputData.text || ''} onChange={(e) => handleInputChange('text', e.target.value)} placeholder="Enter your text here..." rows={4} required />
+                                <Textarea id="qr-text" value={inputDataState.text || ''} onChange={(e) => handleInputChange('text', e.target.value)} placeholder="Enter your text here..." rows={4} required />
                                 </div>
                             );
                         case 'email':
@@ -956,15 +1202,15 @@ export function QrCodeGenerator() {
                                 <div className="space-y-4">
                                 <div className="space-y-2">
                                     <Label htmlFor="qr-email-to">Recipient Email *</Label>
-                                    <Input id="qr-email-to" type="email" value={inputData.email || ''} onChange={(e) => handleInputChange('email', e.target.value)} placeholder="recipient@example.com" required />
+                                    <Input id="qr-email-to" type="email" value={inputDataState.email || ''} onChange={(e) => handleInputChange('email', e.target.value)} placeholder="recipient@example.com" required />
                                 </div>
                                 <div className="space-y-2">
                                     <Label htmlFor="qr-email-subject">Subject (Optional)</Label>
-                                    <Input id="qr-email-subject" type="text" value={inputData.subject || ''} onChange={(e) => handleInputChange('subject', e.target.value)} placeholder="Email Subject" />
+                                    <Input id="qr-email-subject" type="text" value={inputDataState.subject || ''} onChange={(e) => handleInputChange('subject', e.target.value)} placeholder="Email Subject" />
                                 </div>
                                 <div className="space-y-2">
                                     <Label htmlFor="qr-email-body">Body (Optional)</Label>
-                                    <Textarea id="qr-email-body" value={inputData.body || ''} onChange={(e) => handleInputChange('body', e.target.value)} placeholder="Email message..." rows={3} />
+                                    <Textarea id="qr-email-body" value={inputDataState.body || ''} onChange={(e) => handleInputChange('body', e.target.value)} placeholder="Email message..." rows={3} />
                                 </div>
                                 </div>
                             );
@@ -972,7 +1218,7 @@ export function QrCodeGenerator() {
                             return (
                                 <div className="space-y-2">
                                 <Label htmlFor="qr-phone">Phone Number *</Label>
-                                <Input id="qr-phone" type="tel" value={inputData.phone || ''} onChange={(e) => handleInputChange('phone', e.target.value)} placeholder="+1234567890" required />
+                                <Input id="qr-phone" type="tel" value={inputDataState.phone || ''} onChange={(e) => handleInputChange('phone', e.target.value)} placeholder="+1234567890" required />
                                 </div>
                             );
                         case 'whatsapp':
@@ -980,12 +1226,12 @@ export function QrCodeGenerator() {
                                 <div className="space-y-4">
                                 <div className="space-y-2">
                                     <Label htmlFor="qr-whatsapp-phone">WhatsApp Number (incl. country code) *</Label>
-                                    <Input id="qr-whatsapp-phone" type="tel" value={inputData.whatsapp_phone || ''} onChange={(e) => handleInputChange('whatsapp_phone', e.target.value)} placeholder="14155552671 (no + or spaces)" required />
+                                    <Input id="qr-whatsapp-phone" type="tel" value={inputDataState.whatsapp_phone || ''} onChange={(e) => handleInputChange('whatsapp_phone', e.target.value)} placeholder="14155552671 (no + or spaces)" required />
                                     <p className="text-xs text-muted-foreground">Enter number without '+', spaces, or dashes.</p>
                                 </div>
                                 <div className="space-y-2">
                                     <Label htmlFor="qr-whatsapp-message">Prefilled Message (Optional)</Label>
-                                    <Textarea id="qr-whatsapp-message" value={inputData.whatsapp_message || ''} onChange={(e) => handleInputChange('whatsapp_message', e.target.value)} placeholder="Hello!" rows={3} />
+                                    <Textarea id="qr-whatsapp-message" value={inputDataState.whatsapp_message || ''} onChange={(e) => handleInputChange('whatsapp_message', e.target.value)} placeholder="Hello!" rows={3} />
                                 </div>
                                 </div>
                             )
@@ -994,11 +1240,11 @@ export function QrCodeGenerator() {
                                 <div className="space-y-4">
                                     <div className="space-y-2">
                                         <Label htmlFor="qr-sms-phone">SMS Recipient Number *</Label>
-                                        <Input id="qr-sms-phone" type="tel" value={inputData.sms_phone || ''} onChange={(e) => handleInputChange('sms_phone', e.target.value)} placeholder="+1234567890" required />
+                                        <Input id="qr-sms-phone" type="tel" value={inputDataState.sms_phone || ''} onChange={(e) => handleInputChange('sms_phone', e.target.value)} placeholder="+1234567890" required />
                                     </div>
                                     <div className="space-y-2">
                                         <Label htmlFor="qr-sms-message">SMS Message (Optional)</Label>
-                                        <Textarea id="qr-sms-message" value={inputData.sms_message || ''} onChange={(e) => handleInputChange('sms_message', e.target.value)} placeholder="Enter message..." rows={3} />
+                                        <Textarea id="qr-sms-message" value={inputDataState.sms_message || ''} onChange={(e) => handleInputChange('sms_message', e.target.value)} placeholder="Enter message..." rows={3} />
                                     </div>
                                 </div>
                             );
@@ -1007,22 +1253,22 @@ export function QrCodeGenerator() {
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                     <div className="space-y-2">
                                         <Label htmlFor="qr-latitude">Latitude *</Label>
-                                        <Input id="qr-latitude" type="number" step="any" value={inputData.latitude || ''} onChange={(e) => handleInputChange('latitude', e.target.value)} placeholder="e.g., 40.7128" required />
+                                        <Input id="qr-latitude" type="number" step="any" value={inputDataState.latitude || ''} onChange={(e) => handleInputChange('latitude', e.target.value)} placeholder="e.g., 40.7128" required />
                                     </div>
                                     <div className="space-y-2">
                                         <Label htmlFor="qr-longitude">Longitude *</Label>
-                                        <Input id="qr-longitude" type="number" step="any" value={inputData.longitude || ''} onChange={(e) => handleInputChange('longitude', e.target.value)} placeholder="e.g., -74.0060" required />
+                                        <Input id="qr-longitude" type="number" step="any" value={inputDataState.longitude || ''} onChange={(e) => handleInputChange('longitude', e.target.value)} placeholder="e.g., -74.0060" required />
                                     </div>
                                     </div>
                                 )
                         case 'event':
-                                const eventStartValue = inputData.event_start ? format(new Date(inputData.event_start), "yyyy-MM-dd'T'HH:mm") : '';
-                                const eventEndValue = inputData.event_end ? format(new Date(inputData.event_end), "yyyy-MM-dd'T'HH:mm") : '';
+                                const eventStartValue = inputDataState.event_start ? format(new Date(inputDataState.event_start), "yyyy-MM-dd'T'HH:mm") : '';
+                                const eventEndValue = inputDataState.event_end ? format(new Date(inputDataState.event_end), "yyyy-MM-dd'T'HH:mm") : '';
                             return (
                                 <div className="space-y-4">
                                     <div className="space-y-2">
                                         <Label htmlFor="qr-event-summary">Event Title *</Label>
-                                        <Input id="qr-event-summary" type="text" value={inputData.event_summary || ''} onChange={(e) => handleInputChange('event_summary', e.target.value)} placeholder="Meeting, Birthday Party..." required />
+                                        <Input id="qr-event-summary" type="text" value={inputDataState.event_summary || ''} onChange={(e) => handleInputChange('event_summary', e.target.value)} placeholder="Meeting, Birthday Party..." required />
                                     </div>
                                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                                         <div className="space-y-2">
@@ -1048,11 +1294,11 @@ export function QrCodeGenerator() {
                                     </div>
                                     <div className="space-y-2">
                                         <Label htmlFor="qr-event-location">Location (Optional)</Label>
-                                        <Input id="qr-event-location" type="text" value={inputData.event_location || ''} onChange={(e) => handleInputChange('event_location', e.target.value)} placeholder="Conference Room A, Online..." />
+                                        <Input id="qr-event-location" type="text" value={inputDataState.event_location || ''} onChange={(e) => handleInputChange('event_location', e.target.value)} placeholder="Conference Room A, Online..." />
                                     </div>
                                     <div className="space-y-2">
                                         <Label htmlFor="qr-event-description">Description (Optional)</Label>
-                                        <Textarea id="qr-event-description" value={inputData.event_description || ''} onChange={(e) => handleInputChange('event_description', e.target.value)} placeholder="Event details..." rows={3} />
+                                        <Textarea id="qr-event-description" value={inputDataState.event_description || ''} onChange={(e) => handleInputChange('event_description', e.target.value)} placeholder="Event details..." rows={3} />
                                     </div>
                                     <p className="text-xs text-muted-foreground">* Event Title and Start Date/Time are required.</p>
                                 </div>
@@ -1062,11 +1308,11 @@ export function QrCodeGenerator() {
                                 <div className="space-y-4">
                                     <div className="space-y-2">
                                         <Label htmlFor="wifi-ssid">Network Name (SSID) *</Label>
-                                        <Input id="wifi-ssid" value={inputData.wifi_ssid || ''} onChange={(e) => handleInputChange('wifi_ssid', e.target.value)} placeholder="MyHomeNetwork" required />
+                                        <Input id="wifi-ssid" value={inputDataState.wifi_ssid || ''} onChange={(e) => handleInputChange('wifi_ssid', e.target.value)} placeholder="MyHomeNetwork" required />
                                     </div>
                                      <div className="space-y-2">
                                         <Label htmlFor="wifi-encryption">Encryption</Label>
-                                        <Select onValueChange={(value) => handleInputChange('wifi_encryption', value)} value={inputData.wifi_encryption || 'WPA/WPA2'}>
+                                        <Select onValueChange={(value) => handleInputChange('wifi_encryption', value)} value={inputDataState.wifi_encryption || 'WPA/WPA2'}>
                                             <SelectTrigger id="wifi-encryption"><SelectValue /></SelectTrigger>
                                             <SelectContent>
                                                 {wifiEncryptionTypes.map(type => <SelectItem key={type} value={type}>{type}</SelectItem>)}
@@ -1074,14 +1320,14 @@ export function QrCodeGenerator() {
                                         </Select>
                                     </div>
                                     {/* Conditionally render password based on encryption */}
-                                     {inputData.wifi_encryption !== 'None' && (
+                                     {inputDataState.wifi_encryption !== 'None' && (
                                         <div className="space-y-2">
                                             <Label htmlFor="wifi-password">Password *</Label>
                                             <div className="flex items-center gap-2">
                                                 <Input
                                                     id="wifi-password"
                                                     type={wifiPasswordVisible ? 'text' : 'password'}
-                                                    value={inputData.wifi_password || ''}
+                                                    value={inputDataState.wifi_password || ''}
                                                     onChange={(e) => handleInputChange('wifi_password', e.target.value)}
                                                     placeholder="Your password"
                                                     required
@@ -1093,7 +1339,7 @@ export function QrCodeGenerator() {
                                         </div>
                                     )}
                                     <div className="flex items-center space-x-2 pt-2">
-                                    <Checkbox id="wifi-hidden" checked={!!inputData.wifi_hidden} onCheckedChange={(checked) => handleCheckboxChange('wifi_hidden', checked)} />
+                                    <Checkbox id="wifi-hidden" checked={!!inputDataState.wifi_hidden} onCheckedChange={(checked) => handleCheckboxChange('wifi_hidden', checked)} />
                                         <Label htmlFor="wifi-hidden" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
                                             Hidden Network
                                         </Label>
@@ -1111,25 +1357,25 @@ export function QrCodeGenerator() {
                                      <p className="text-xs text-muted-foreground">* Network Name (SSID) is required. Password required unless encryption is 'None'.</p>
                                 </div>
                             );
-                         case 'upi': // Added UPI inputs
+                         case 'upi':
                             return (
                                 <div className="space-y-4">
                                     <div className="space-y-2">
                                         <Label htmlFor="upi-id">UPI ID (Payee VPA) *</Label>
-                                        <Input id="upi-id" type="text" value={inputData.upi_id || ''} onChange={(e) => handleInputChange('upi_id', e.target.value)} placeholder="yourname@bank" required />
+                                        <Input id="upi-id" type="text" value={inputDataState.upi_id || ''} onChange={(e) => handleInputChange('upi_id', e.target.value)} placeholder="yourname@bank" required />
                                     </div>
                                     <div className="space-y-2">
                                         <Label htmlFor="upi-name">Payee Name (Optional)</Label>
-                                        <Input id="upi-name" type="text" value={inputData.upi_name || ''} onChange={(e) => handleInputChange('upi_name', e.target.value)} placeholder="e.g., John Doe" />
+                                        <Input id="upi-name" type="text" value={inputDataState.upi_name || ''} onChange={(e) => handleInputChange('upi_name', e.target.value)} placeholder="e.g., John Doe" />
                                     </div>
                                     <div className="space-y-2">
                                         <Label htmlFor="upi-amount">Amount (INR) *</Label>
-                                        <Input id="upi-amount" type="number" step="0.01" min="0.01" value={inputData.upi_amount || ''} onChange={(e) => handleInputChange('upi_amount', e.target.value)} placeholder="e.g., 500.00" required />
+                                        <Input id="upi-amount" type="number" step="0.01" min="0.01" value={inputDataState.upi_amount || ''} onChange={(e) => handleInputChange('upi_amount', e.target.value)} placeholder="e.g., 500.00" required />
                                         <p className="text-xs text-muted-foreground">Enter the amount in Indian Rupees (INR). Must be positive.</p>
                                     </div>
                                     <div className="space-y-2">
                                         <Label htmlFor="upi-note">Note/Message (Optional)</Label>
-                                        <Input id="upi-note" type="text" value={inputData.upi_note || ''} onChange={(e) => handleInputChange('upi_note', e.target.value)} placeholder="e.g., Payment for order #123" />
+                                        <Input id="upi-note" type="text" value={inputDataState.upi_note || ''} onChange={(e) => handleInputChange('upi_note', e.target.value)} placeholder="e.g., Payment for order #123" />
                                     </div>
                                      {/* Preset Amount Buttons */}
                                     <div className="space-y-2">
@@ -1148,6 +1394,40 @@ export function QrCodeGenerator() {
                                     <p className="text-xs text-muted-foreground">* UPI ID and Amount are required.</p>
                                 </div>
                             );
+                        case 'audio-image': // New case for Audio/Image Combo
+                            return (
+                                <div className="space-y-4">
+                                    <div className="space-y-2">
+                                        <Label htmlFor="audio-image-title">Card Title (Optional)</Label>
+                                        <Input id="audio-image-title" type="text" value={inputDataState.audio_image_title || ''} onChange={(e) => handleInputChange('audio_image_title', e.target.value)} placeholder="e.g., Happy Birthday!" />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label htmlFor="audio-image-upload">Upload Image *</Label>
+                                        <div className="flex items-center gap-4">
+                                            <Button variant="outline" onClick={triggerAudioImageUpload} className="w-full sm:w-auto flex-grow justify-start text-left font-normal">
+                                                <Upload className="mr-2 h-4 w-4" />
+                                                {inputDataState.audio_image_imageName ? `Change Image (${inputDataState.audio_image_imageName})` : "Upload Image (PNG, JPG...)"}
+                                            </Button>
+                                            <Input ref={audioImageInputRef} id="audio-image-upload" type="file" accept="image/png, image/jpeg, image/gif, image/webp" onChange={(e) => handleAudioImageUpload('image', e)} className="hidden" />
+                                            {audioImageUrl && <img src={audioImageUrl} alt="Image Preview" className="h-10 w-10 rounded object-cover border bg-white" />}
+                                        </div>
+                                        <p className="text-xs text-muted-foreground">Max file size: 5MB.</p>
+                                    </div>
+                                     <div className="space-y-2">
+                                        <Label htmlFor="audio-upload">Upload Audio *</Label>
+                                        <div className="flex items-center gap-4">
+                                            <Button variant="outline" onClick={triggerAudioUpload} className="w-full sm:w-auto flex-grow justify-start text-left font-normal">
+                                                <Upload className="mr-2 h-4 w-4" />
+                                                {inputDataState.audio_image_audioName ? `Change Audio (${inputDataState.audio_image_audioName})` : "Upload Audio (MP3, WAV...)"}
+                                            </Button>
+                                             <Input ref={audioInputRef} id="audio-upload" type="file" accept="audio/mpeg, audio/wav, audio/ogg, audio/mp3" onChange={(e) => handleAudioImageUpload('audio', e)} className="hidden" />
+                                            {audioUrl && <Music className="h-6 w-6 text-muted-foreground" />}
+                                        </div>
+                                        <p className="text-xs text-muted-foreground">Max file size: 5MB.</p>
+                                    </div>
+                                    <p className="text-xs text-muted-foreground">* Both Image and Audio files are required.</p>
+                                </div>
+                            );
                         default:
                             return <p className="text-center text-muted-foreground">Select a QR code type to begin.</p>;
                     }
@@ -1159,123 +1439,184 @@ export function QrCodeGenerator() {
 
   // --- Bulk QR Code Generation ---
 
-  const [bulkQrCodes, setBulkQrCodes] = useState<string[]>([]);
-  const [csvFile, setCsvFile] = useState<File | null>(null);
-	const [csvData, setCsvData] = useState<any[]>([]);
+  const handleCsvUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.type !== 'text/csv' && !file.name.endsWith('.csv')) {
+      toast({ variant: 'destructive', title: 'Invalid File Type', description: 'Please upload a CSV file.' });
+      return;
+    }
+
+    setCsvFile(file);
+
+    Papa.parse(file, {
+      header: true,
+      skipEmptyLines: true,
+      complete: (results) => {
+         if (results.errors.length > 0) {
+             console.error("CSV Parsing Errors:", results.errors);
+             toast({ variant: 'destructive', title: 'CSV Parsing Error', description: `Error parsing row ${results.errors[0].row}: ${results.errors[0].message}` });
+             setCsvData([]); // Clear data on error
+         } else if (!results.data.length) {
+             toast({ variant: 'destructive', title: 'Empty CSV', description: 'The uploaded CSV file is empty or has no valid data.' });
+             setCsvData([]);
+         } else if (!results.meta.fields || !results.meta.fields.includes('type') || !results.meta.fields.includes('data')) {
+             toast({ variant: 'destructive', title: 'Invalid CSV Headers', description: "CSV must contain 'type' and 'data' columns." });
+             setCsvData([]);
+         } else {
+            setCsvData(results.data);
+            toast({ title: 'CSV Uploaded', description: `Found ${results.data.length} rows. Ready to generate.` });
+         }
+      },
+      error: (error) => {
+         console.error("CSV Parsing Failed:", error);
+        toast({ variant: 'destructive', title: 'CSV Parsing Failed', description: 'Could not parse the CSV file.' });
+         setCsvData([]);
+      },
+    });
+  };
+
+  const handleBulkDownload = async () => {
+    if (bulkQrCodes.length === 0) {
+      toast({ variant: 'destructive', title: 'No QR Codes to Download', description: 'Please generate QR codes first.' });
+      return;
+    }
+    logFirebaseEvent('bulk_qr_download_started', { count: bulkQrCodes.length });
+
+    const zip = new JSZip();
+    const downloadFormat = fileExtension === 'svg' ? 'svg' : 'png'; // Prefer SVG or PNG for bulk
+
+    bulkQrCodes.forEach((qrCodeDataUrl, index) => {
+      try {
+          const filename = `qr-code-${index + 1}-${csvData[index]?.type || 'bulk'}.${downloadFormat}`;
+          const base64Data = qrCodeDataUrl.split(',')[1];
+          if (!base64Data) {
+              console.warn(`Could not extract base64 data for QR code ${index + 1}. Skipping.`);
+              return; // Skip if data URL is malformed
+          }
+          zip.file(filename, base64Data, { base64: true });
+      } catch (error) {
+           console.error(`Error adding QR code ${index + 1} to zip:`, error);
+      }
+    });
+
+    try {
+         const zipFilename = 'bulk-qr-codes.zip';
+         const content = await zip.generateAsync({ type: 'blob' });
+
+         const url = window.URL.createObjectURL(content);
+         const link = document.createElement('a');
+         link.href = url;
+         link.download = zipFilename;
+         document.body.appendChild(link); // Required for Firefox
+         link.click();
+         document.body.removeChild(link); // Clean up
+         window.URL.revokeObjectURL(url);
+
+         toast({ title: 'Download Started', description: `Downloading ${bulkQrCodes.length} QR codes as ${zipFilename}.` });
+          logFirebaseEvent('bulk_qr_download_completed', { count: bulkQrCodes.length });
+    } catch (error) {
+        console.error("Error generating or downloading zip file:", error);
+        toast({ variant: 'destructive', title: 'Zip Download Failed', description: 'Could not create or download the zip file.' });
+         logFirebaseEvent('bulk_qr_download_failed', { error: (error as Error).message });
+    }
+  };
 
 
-  const bulkQrCodeSchema = z.object({
-		type: z.enum(['url', 'text', 'email', 'phone', 'whatsapp', 'sms', 'location', 'event', 'wifi', 'upi'] as [string, ...string[]]),
-		data: z.string().min(1),
-	  });
+  const generateBulkQrCodes = async () => {
+    if (csvData.length === 0) {
+      toast({ variant: 'destructive', title: 'No CSV Data', description: 'Please upload a valid CSV file first.' });
+      return;
+    }
+    logFirebaseEvent('bulk_qr_generation_started', { count: csvData.length });
+
+    const generatedCodes: string[] = [];
+    let successCount = 0;
+    let errorCount = 0;
+
+    // Use a temporary QR instance for bulk generation
+    const bulkOptions = { ...options, type: 'svg' as 'svg', width: 256, height: 256 }; // Use SVG for data URL generation
+    const tempInstance = new QRCodeStyling(bulkOptions);
 
 
-	const { register, handleSubmit, formState: { errors }, reset } = useForm<z.infer<typeof bulkQrCodeSchema>>({
-		resolver: zodResolver(bulkQrCodeSchema),
-		defaultValues: {
-		  type: 'url',
-		  data: '',
-		},
-	  });
+    for (let i = 0; i < csvData.length; i++) {
+         const row = csvData[i];
+         // Basic validation of row data
+         if (!row.type || !row.data || typeof row.type !== 'string' || typeof row.data !== 'string') {
+              console.warn(`Invalid data in CSV row ${i + 1}. Skipping. Row:`, row);
+              toast({ variant: 'destructive', title: 'Invalid Row Data', description: `Skipping row ${i + 1} due to missing or invalid 'type' or 'data'.`, duration: 5000 });
+              errorCount++;
+              continue;
+         }
+
+         const rowType = row.type.trim().toLowerCase() as QrType;
+         const rowDataValue = row.data.trim();
+
+         // Check if the type is valid
+         if (!qrTypeOptions.some(opt => opt.value === rowType)) {
+              console.warn(`Invalid QR type '${rowType}' in CSV row ${i + 1}. Skipping.`);
+               toast({ variant: 'destructive', title: 'Invalid QR Type', description: `Skipping row ${i + 1}: Invalid type '${rowType}'.`, duration: 5000 });
+               errorCount++;
+              continue;
+         }
+
+         // Prepare data object for generateQrDataString
+         const inputDataObject: Record<string, any> = {};
+         // This needs refinement based on expected CSV columns for complex types
+         if (rowType === 'url') inputDataObject.url = rowDataValue;
+         else if (rowType === 'text') inputDataObject.text = rowDataValue;
+         else if (rowType === 'phone') inputDataObject.phone = rowDataValue;
+         else if (rowType === 'email') inputDataObject.email = rowDataValue; // Simplified: assumes only email address is in 'data' column
+         // Add more complex parsing logic here if CSV has multiple columns for types like email, wifi, event etc.
+         else inputDataObject[rowType] = rowDataValue; // Fallback for simple types
+
+        const qrDataString = generateQrDataString(rowType, inputDataObject, toast);
+
+         if (qrDataString) {
+             try {
+                  tempInstance.update({ data: qrDataString });
+                  // Wait a tiny bit for the instance update (might not be strictly necessary for getRawDataURL)
+                  await new Promise(resolve => setTimeout(resolve, 5));
+                  const dataUrl = await tempInstance.getRawDataURL('svg');
+                  if (dataUrl) {
+                     generatedCodes.push(dataUrl);
+                     successCount++;
+                  } else {
+                       console.warn(`Could not get data URL for QR code in row ${i + 1}. Skipping.`);
+                       errorCount++;
+                  }
+             } catch (error: any) {
+                  console.error(`Error generating QR for row ${i + 1}:`, error);
+                   toast({ variant: 'destructive', title: `Generation Error (Row ${i + 1})`, description: error.message || 'Could not generate QR code.', duration: 5000 });
+                  errorCount++;
+             }
+         } else {
+             console.warn(`Could not generate valid QR data string for row ${i + 1}. Skipping.`);
+             // generateQrDataString should have shown a toast for specific validation errors
+             errorCount++;
+         }
+     }
 
 
-	  const handleCsvUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-		const file = e.target.files?.[0];
-		if (!file) return;
-
-		if (file.type !== 'text/csv' && file.type !== 'application/vnd.ms-excel') {
-		  toast({ variant: 'destructive', title: 'Invalid File Type', description: 'Please upload a CSV file.' });
-		  return;
-		}
-
-		setCsvFile(file);
-
-		Papa.parse(file, {
-		  header: true, // Use first row as header
-		  skipEmptyLines: true,
-		  complete: (results) => {
-			setCsvData(results.data);
-		  },
-		  error: () => {
-			toast({ variant: 'destructive', title: 'CSV Parsing Error', description: 'Could not parse CSV file.' });
-		  },
-		});
-	  };
-
-	  const handleBulkDownload = async () => {
-		if (bulkQrCodes.length === 0) {
-		  toast({ variant: 'destructive', title: 'No QR Codes to Download', description: 'Please generate QR codes first.' });
-		  return;
-		}
-
-		const zip = new JSZip();
-
-		bulkQrCodes.forEach((qrCode, index) => {
-		  // Assuming qrCode is an SVG or PNG data URL
-		  const filename = `qr-code-${index + 1}.${fileExtension}`;
-		  const base64Data = qrCode.split(',')[1]; // Remove data:image/png;base64, from the beginning
-		  zip.file(filename, base64Data, { base64: true });
-		});
-
-		const zipFilename = 'qr-codes.zip';
-		const content = await zip.generateAsync({ type: 'blob' });
-
-		const url = window.URL.createObjectURL(content);
-		const link = document.createElement('a');
-		link.href = url;
-		link.download = zipFilename;
-		link.click();
-		window.URL.revokeObjectURL(url);
-
-		toast({ title: 'Download Started', description: 'Downloading QR codes as a zip file.' });
-	  };
-
-
-	  const generateBulkQrCodes = () => {
-		if (csvData.length === 0) {
-		  toast({ variant: 'destructive', title: 'No CSV Data', description: 'Please upload a CSV file.' });
-		  return;
-		}
-
-		const generatedCodes: string[] = [];
-		csvData.forEach((row, index) => {
-		  try {
-			const validatedData = bulkQrCodeSchema.parse(row);
-			const qrData = generateQrDataString(validatedData.type, { [validatedData.type]: validatedData.data }, toast);
-
-			if (qrData) {
-			  // Generate QR code for each row in CSV
-			  const qrOptions: QRCodeStylingOptions = {
-				...options,
-				data: qrData,
-			  };
-
-			  const qrCode = new QRCodeStyling(qrOptions);
-			  qrCode.getRawDataURL().then((url) => {
-				generatedCodes.push(url);
-				if (index === csvData.length - 1) {
-				  // After processing the last row
-				  setBulkQrCodes([...generatedCodes]); // Update state to trigger re-render
-				  toast({ title: 'QR Codes Generated', description: `Generated ${csvData.length} QR codes from CSV.` });
-				}
-			  });
-			} else {
-			  console.warn(`Could not generate QR code for row ${index + 1}. Skipping.`);
-			}
-		  } catch (error) {
-			console.error('Validation error:', error);
-			toast({ variant: 'destructive', title: 'Validation Error', description: `Error validating row ${index + 1} in CSV file.` });
-		  }
-		});
-
-		setBulkQrCodes(generatedCodes);
-	  };
+    setBulkQrCodes(generatedCodes); // Update state with successfully generated codes
+    if (successCount > 0) {
+         toast({ title: 'Bulk Generation Complete', description: `Generated ${successCount} QR codes. ${errorCount > 0 ? `${errorCount} rows failed.` : ''}` });
+          logFirebaseEvent('bulk_qr_generation_completed', { success: successCount, failed: errorCount });
+    } else if (errorCount > 0) {
+         toast({ variant: 'destructive', title: 'Bulk Generation Failed', description: `Could not generate any QR codes. ${errorCount} rows failed.` });
+         logFirebaseEvent('bulk_qr_generation_failed', { failed: errorCount });
+    } else {
+         toast({ variant: 'destructive', title: 'Bulk Generation Failed', description: 'No QR codes were generated. Check CSV data.' });
+         logFirebaseEvent('bulk_qr_generation_failed', { failed: csvData.length });
+    }
+  };
 
 
 
   // --- Main Render ---
   return (
-
+    // Removed <FirebaseAnalyticsLogger /> wrapper
     <div className="w-full max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-8 px-4 py-6">
         {/* Options Panel */}
         <Card className="lg:col-span-2 order-2 lg:order-1 animate-fade-in">
@@ -1284,19 +1625,18 @@ export function QrCodeGenerator() {
             <CardDescription>Select type, enter content, and personalize the style.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
-             {/* Tabs for Content & History (History tab removed) */}
+             {/* Tabs for Content & History */}
              <Tabs defaultValue="content" className="w-full">
-                 {/* Use full width tabs on small screens */}
-                <TabsList className="grid w-full grid-cols-1 mb-4"> {/* Only one tab now */}
+                 <TabsList className="grid w-full grid-cols-3 mb-4"> {/* Adjusted grid cols */}
                     <TabsTrigger value="content"><Settings2 className="inline-block mr-1 h-4 w-4" /> Options</TabsTrigger>
-					<TabsTrigger value="bulk"><Upload className="inline-block mr-1 h-4 w-4" /> Bulk Generate</TabsTrigger>
-                    {/* Removed History Trigger */}
+                    <TabsTrigger value="bulk"><Upload className="inline-block mr-1 h-4 w-4" /> Bulk Generate</TabsTrigger>
+                     <TabsTrigger value="history" onClick={() => setShowHistory(true)}><History className="inline-block mr-1 h-4 w-4" /> History ({history.length})</TabsTrigger> {/* History Trigger */}
                 </TabsList>
 
                 {/* Content Tab */}
                 <TabsContent value="content" className="pt-6 space-y-6">
                     {/* Accordion for Content, Styling, Logo, Extras */}
-                    <Accordion type="multiple" collapsible="true" className="w-full" defaultValue={["content-item", "styling-item"]}>
+                    <Accordion type="multiple" collapsible className="w-full" defaultValue={["content-item", "styling-item"]}>
                          {/* Step 1: Content */}
                         <AccordionItem value="content-item">
                              <AccordionTrigger className="text-lg font-semibold">
@@ -1309,9 +1649,18 @@ export function QrCodeGenerator() {
                                     <Select
                                         onValueChange={(value: QrType) => {
                                             setQrType(value);
-                                            setInputData({}); // Clear input data on type change
+                                            setInputDataState({}); // Clear input data on type change
                                             setExpiryDate(undefined);
                                             setQrLabel('');
+                                             // Clear audio/image previews if changing away from that type
+                                             if (value !== 'audio-image') {
+                                                 setAudioImageUrl(null);
+                                                 setAudioUrl(null);
+                                             }
+                                             // Set default data for URL type if selected
+                                             if (value === 'url') {
+                                                 setInputDataState({ url: defaultOptions.data ?? '' });
+                                             }
                                          }}
                                          value={qrType}
                                      >
@@ -1476,12 +1825,12 @@ export function QrCodeGenerator() {
                             </AccordionTrigger>
                              <AccordionContent className="pt-4 space-y-6">
                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                                     {/* Label (Removed, as history is removed) */}
-                                     {/* <div className="space-y-2">
+                                     {/* Label for History */}
+                                     <div className="space-y-2">
                                          <Label htmlFor="qr-label">Label Text (For History)</Label>
                                          <Input id="qr-label" type="text" value={qrLabel} onChange={(e) => setQrLabel(e.target.value)} placeholder="e.g., My Website QR" maxLength={50} />
                                          <p className="text-xs text-muted-foreground">Helps identify this QR in your history.</p>
-                                     </div> */}
+                                     </div>
 
                                       {/* Expiry Reminder */}
                                      <div className='space-y-2'>
@@ -1515,28 +1864,131 @@ export function QrCodeGenerator() {
 
                 </TabsContent>
 
-				{/* Bulk Generate Tab */}
-				<TabsContent value="bulk" className="pt-6 space-y-6">
-					<div className="space-y-4">
-						<Label htmlFor="csv-upload">Upload CSV File</Label>
-						<Input id="csv-upload" type="file" accept=".csv, .xlsx" onChange={handleCsvUpload} />
-						<p className="text-xs text-muted-foreground">Upload a CSV file with columns 'type' and 'data' for bulk QR code generation.</p>
-					</div>
-					<Button onClick={generateBulkQrCodes}>Generate Bulk QR Codes</Button>
+                {/* Bulk Generate Tab */}
+                <TabsContent value="bulk" className="pt-6 space-y-6">
+                    <div className="space-y-4">
+                        <Label htmlFor="csv-upload">Upload CSV File</Label>
+                        <Input id="csv-upload" type="file" accept=".csv" onChange={handleCsvUpload} />
+                        <p className="text-xs text-muted-foreground">Upload a CSV file with columns 'type' and 'data' for bulk QR code generation. Complex types may require additional columns.</p>
+                        <Button onClick={generateBulkQrCodes} disabled={csvData.length === 0}>Generate Bulk QR Codes</Button>
+                    </div>
 
-					<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 pt-4">
-						{bulkQrCodes.map((qrCode, index) => (
-							<div key={index} className="border rounded-lg overflow-hidden shadow-md">
-								<img src={qrCode} alt={`QR Code ${index + 1}`} className="w-full h-auto" />
-							</div>
-						))}
-					</div>
-					{bulkQrCodes.length > 0 && (
-						<Button onClick={handleBulkDownload}>Download All as Zip</Button>
-					)}
-				</TabsContent>
+                    {bulkQrCodes.length > 0 && (
+                        <div className="space-y-4 pt-4 border-t">
+                             <h4 className="font-medium">Generated QR Codes ({bulkQrCodes.length})</h4>
+                             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                                {bulkQrCodes.map((qrCodeDataUrl, index) => (
+                                    <div key={index} className="border rounded-lg overflow-hidden shadow-sm bg-white p-1 aspect-square flex items-center justify-center">
+                                        <img src={qrCodeDataUrl} alt={`QR Code ${index + 1}`} className="w-full h-auto object-contain" />
+                                    </div>
+                                ))}
+                            </div>
+                            <Button onClick={handleBulkDownload} className="w-full sm:w-auto">
+                                <Download className="mr-2 h-4 w-4" /> Download All as Zip
+                             </Button>
+                        </div>
+                    )}
+                </TabsContent>
 
-                 {/* History Tab Removed */}
+                 {/* History Tab Content (Rendered conditionally or in a Dialog/Sheet) */}
+                 {/* Using a Dialog for better focus management */}
+                 <AlertDialog open={showHistory} onOpenChange={setShowHistory}>
+                     <AlertDialogContent className="max-w-3xl h-[80vh] flex flex-col"> {/* Adjust size and height */}
+                         <AlertDialogHeader>
+                             <AlertDialogTitle className="flex justify-between items-center">
+                                 Generation History ({history.length})
+                                 <AlertDialogCancel asChild>
+                                      <Button variant="ghost" size="icon" onClick={() => setShowHistory(false)}>
+                                          <X className="h-4 w-4" />
+                                          <span className="sr-only">Close History</span>
+                                      </Button>
+                                 </AlertDialogCancel>
+                              </AlertDialogTitle>
+                             <AlertDialogDescription>
+                                Previously generated QR codes stored locally in your browser. Click to reload.
+                             </AlertDialogDescription>
+                         </AlertDialogHeader>
+
+                         {history.length > 0 ? (
+                             <ScrollArea className="flex-grow border rounded-md my-4"> {/* Make scrollable */}
+                                 <div className="p-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                                     {history.map((item) => {
+                                         const TypeIcon = qrTypeOptions.find(opt => opt.value === item.type)?.icon || QrCodeIcon;
+                                         return (
+                                             <Card key={item.id} className="overflow-hidden group relative hover:shadow-md transition-shadow">
+                                                  <button onClick={() => loadFromHistory(item)} className="absolute inset-0 z-10 focus:outline-none focus:ring-2 focus:ring-primary rounded-lg" aria-label={`Load ${item.label || `QR from ${format(item.timestamp, 'p')}`}`}></button>
+                                                 <CardContent className="p-3 flex items-start gap-3">
+                                                      {item.qrCodeSvgDataUrl ? (
+                                                          <img src={item.qrCodeSvgDataUrl} alt="QR Code Preview" className="w-16 h-16 sm:w-20 sm:h-20 object-contain border rounded bg-white shrink-0" />
+                                                      ) : (
+                                                           <div className="w-16 h-16 sm:w-20 sm:h-20 flex items-center justify-center border rounded bg-muted shrink-0">
+                                                               <QrCodeIcon className="w-8 h-8 text-muted-foreground" />
+                                                           </div>
+                                                      )}
+                                                     <div className="flex-grow min-w-0">
+                                                         <p className="text-sm font-medium truncate mb-1 group-hover:text-primary transition-colors">{item.label || `QR Code ${item.id}`}</p>
+                                                          <p className="text-xs text-muted-foreground flex items-center gap-1 mb-1">
+                                                             <TypeIcon className="h-3 w-3 shrink-0" />
+                                                             {qrTypeOptions.find(opt => opt.value === item.type)?.label || item.type}
+                                                          </p>
+                                                         <p className="text-xs text-muted-foreground">{format(item.timestamp, 'PP p')}</p>
+                                                     </div>
+                                                      <AlertDialog>
+                                                          <AlertDialogTrigger asChild>
+                                                              <Button variant="ghost" size="icon" className="absolute top-1 right-1 z-20 text-muted-foreground hover:text-destructive hover:bg-destructive/10 h-7 w-7">
+                                                                 <Trash2 className="h-4 w-4" />
+                                                                  <span className="sr-only">Delete Item</span>
+                                                              </Button>
+                                                          </AlertDialogTrigger>
+                                                          <AlertDialogContent>
+                                                              <AlertDialogHeader>
+                                                                  <AlertDialogTitle>Delete History Item?</AlertDialogTitle>
+                                                                  <AlertDialogDescription>
+                                                                      This action cannot be undone. Are you sure you want to delete "{item.label || `QR Code ${item.id}`}"?
+                                                                  </AlertDialogDescription>
+                                                              </AlertDialogHeader>
+                                                              <AlertDialogFooter>
+                                                                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                                                  <AlertDialogAction onClick={() => deleteFromHistory(item.id)} className={buttonVariants({ variant: "destructive" })}>Delete</AlertDialogAction>
+                                                              </AlertDialogFooter>
+                                                          </AlertDialogContent>
+                                                      </AlertDialog>
+                                                 </CardContent>
+                                             </Card>
+                                         );
+                                     })}
+                                 </div>
+                             </ScrollArea>
+                         ) : (
+                             <div className="flex-grow flex items-center justify-center text-muted-foreground">
+                                 No history yet. Generate and save some QR codes!
+                             </div>
+                         )}
+
+                         <AlertDialogFooter>
+                             {history.length > 0 && (
+                                <AlertDialog>
+                                     <AlertDialogTrigger asChild>
+                                         <Button variant="destructive-outline" className="mr-auto">Clear All History</Button>
+                                    </AlertDialogTrigger>
+                                    <AlertDialogContent>
+                                        <AlertDialogHeader>
+                                            <AlertDialogTitle>Clear Entire History?</AlertDialogTitle>
+                                            <AlertDialogDescription>
+                                                 This action cannot be undone. All saved QR codes will be permanently deleted from your browser storage.
+                                            </AlertDialogDescription>
+                                        </AlertDialogHeader>
+                                        <AlertDialogFooter>
+                                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                            <AlertDialogAction onClick={clearHistory} className={buttonVariants({ variant: "destructive" })}>Clear History</AlertDialogAction>
+                                        </AlertDialogFooter>
+                                    </AlertDialogContent>
+                                </AlertDialog>
+                             )}
+                             <Button variant="outline" onClick={() => setShowHistory(false)}>Close</Button>
+                         </AlertDialogFooter>
+                     </AlertDialogContent>
+                 </AlertDialog>
 
              </Tabs>
 
@@ -1547,13 +1999,12 @@ export function QrCodeGenerator() {
         <Card key={qrPreviewKey} className="lg:col-span-1 order-1 lg:order-2 sticky top-6 self-start animate-fade-in [animation-delay:0.2s]">
           <CardHeader>
             <CardTitle>Preview & Download</CardTitle>
-            <CardDescription>Review your QR code and download it.</CardDescription>
+            <CardDescription>Review your QR code, save it, or download it.</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col items-center justify-center space-y-4">
-             {/* Responsive container for QR code */}
-             <div className="border rounded-lg overflow-hidden shadow-md flex items-center justify-center bg-white p-2 relative w-full max-w-[256px] sm:max-w-[300px] lg:max-w-full aspect-square mx-auto" style={{ minHeight: '150px' /* Ensure a minimum height */ }}>
+             <div className="border rounded-lg overflow-hidden shadow-md flex items-center justify-center bg-white p-2 relative w-full max-w-[256px] sm:max-w-[300px] lg:max-w-full aspect-square mx-auto" style={{ minHeight: '150px' }}>
                  <div ref={qrCodeRef} className="absolute inset-0 flex items-center justify-center">
-                     {/* QR code will be appended here by the library */}
+                     {/* QR code appended here */}
                  </div>
                 {!isQrGenerated && (
                      <div className="text-muted-foreground text-center p-4 flex flex-col items-center justify-center h-full absolute inset-0 bg-white/80 backdrop-blur-sm rounded-lg z-10">
@@ -1561,12 +2012,12 @@ export function QrCodeGenerator() {
                          <span>Enter data to generate QR code.</span>
                      </div>
                  )}
+                 {expiryDate && (
+                    <p className="absolute bottom-1 left-1 right-1 text-[10px] text-center text-orange-600 bg-orange-100/80 px-1 py-0.5 rounded-b-md z-10 flex items-center justify-center gap-1">
+                        <Clock className="h-2.5 w-2.5"/> Expires: {format(expiryDate, "PP HH:mm")}
+                    </p>
+                )}
             </div>
-             {expiryDate && (
-                <p className="text-xs text-center text-orange-500 flex items-center gap-1">
-                    <Clock className="h-3 w-3"/> Marked to expire: {format(expiryDate, "PPp HH:mm")}
-                </p>
-            )}
              <div className="w-full space-y-1 pt-4">
                 <Label htmlFor="file-type">Download Format</Label>
                 <Select onValueChange={(value: FileExtension) => setFileExtension(value)} value={fileExtension}>
@@ -1598,7 +2049,11 @@ export function QrCodeGenerator() {
             >
                 <Copy className="mr-2 h-4 w-4" /> Copy QR Data
             </Button>
-             {/* Removed Save to History Button */}
+             {/* Save to History Button */}
+            <Button onClick={addToHistory} className="w-full" variant="secondary" disabled={!isQrGenerated}>
+                 <History className="mr-2 h-4 w-4" /> Save to History
+            </Button>
+              <p className="text-xs text-muted-foreground text-center px-4">Note: History is saved locally in your browser.</p>
           </CardContent>
            <CardFooter>
               <Button onClick={onDownloadClick} className="w-full" disabled={!isQrGenerated}>
@@ -1610,3 +2065,5 @@ export function QrCodeGenerator() {
 
   );
 }
+
+    

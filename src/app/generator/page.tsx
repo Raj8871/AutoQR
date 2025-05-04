@@ -1,7 +1,6 @@
-
 import { Header } from '@/components/layout/Header';
 import { Footer } from '@/components/layout/Footer';
-import { QrCodeGenerator } from '@/components/QrCodeGenerator'; // Corrected import path if needed
+import { QrCodeGenerator } from '@/components/QrCodeGenerator'; // Corrected import path
 
 export default function GeneratorPage() {
   return (
@@ -11,7 +10,6 @@ export default function GeneratorPage() {
       <main className="container flex-1 flex flex-col items-center justify-start py-8 md:py-12 px-4 animate-fade-in">
         {/* QR Code Generator Section takes full width */}
         <section id="qr-generator-section" className="w-full max-w-6xl"> {/* Limit max width */}
-             {/* Title moved inside the QrCodeGenerator component */}
              <QrCodeGenerator />
         </section>
       </main>
