@@ -1,16 +1,16 @@
 
 import { Card, CardContent } from '@/components/ui/card';
-import { Share2, Wifi, Contact, Briefcase, Utensils, Calendar } from 'lucide-react'; // Replaced VCard with Contact
+import { Code, Wifi, Contact, Briefcase, Utensils, Calendar } from 'lucide-react'; // Replaced Share2 with Code
 import Image from 'next/image';
 
 const useCases = [
   {
-    icon: Share2,
-    title: 'Share Links Instantly',
-    description: 'Direct users to your website, social media profiles, or promotional landing pages with a simple scan.',
-    image: 'https://picsum.photos/400/300?random=1',
-    alt: 'Person sharing a link via QR code',
-    aiHint: 'website link sharing'
+    icon: Code, // Changed icon to Code
+    title: 'Unlock Digital Potential', // Updated title
+    description: 'Integrate QR codes into your apps, websites, or digital workflows to bridge the physical and digital worlds.', // Updated description
+    image: 'https://picsum.photos/400/300?random=7', // Changed image source
+    alt: 'Abstract image representing code and digital connection', // Updated alt text
+    aiHint: 'coding tech' // Updated AI hint
   },
   {
     icon: Wifi,
