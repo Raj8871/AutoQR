@@ -5,7 +5,7 @@ import { HeroSection } from '@/components/HeroSection';
 import { FeaturesSection } from '@/components/FeaturesSection';
 import { HowItWorksSection } from '@/components/HowItWorksSection';
 import { WhyChooseUsSection } from '@/components/WhyChooseUsSection';
-import { UseCasesSection } from '@/components/UseCasesSection'; // Import Use Cases
+// Removed UseCasesSection import
 import { TestimonialsSection } from '@/components/TestimonialsSection'; // Import Testimonials
 import { Separator } from '@/components/ui/separator';
 
@@ -30,10 +30,9 @@ export default function Home() {
         {/* Features Section */}
         <FeaturesSection />
 
-         <Separator className="w-1/2 mx-auto" />
-
-         {/* Use Cases Section */}
-         <UseCasesSection />
+         {/* Removed Use Cases Section and its separator */}
+         {/* <Separator className="w-1/2 mx-auto" /> */}
+         {/* <UseCasesSection /> */}
 
          <Separator className="w-1/2 mx-auto" />
 
