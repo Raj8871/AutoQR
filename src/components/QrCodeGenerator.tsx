@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
@@ -24,7 +23,6 @@ import { cn } from '@/lib/utils';
 import { useToast, type Toast } from '@/hooks/use-toast';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
-// Removed import { FirebaseAnalyticsLogger } from '@/components/FirebaseAnalyticsLogger'; // Import FirebaseAnalyticsLogger
 import { logFirebaseEvent } from '@/lib/firebase'; // Import logFirebaseEvent
 
 
@@ -551,6 +549,7 @@ export default function QrCodeGenerator() {
          const { logoUrl, ...rest } = prev;
          return rest;
      });
+     logFirebaseEvent('qr_logo_removed');
   }, []);
 
 
@@ -751,6 +750,7 @@ export default function QrCodeGenerator() {
               }
           }));
      }
+     logFirebaseEvent('qr_logo_customized', { shape: shape, opacity: opacity, size: logoSize });
   }, [logoSize, options.imageOptions, toast]);
 
 
@@ -880,10 +880,12 @@ export default function QrCodeGenerator() {
      }
 
     setInputDataState(prev => ({ ...prev, [key]: value }));
+    logFirebaseEvent('qr_input_changed', { field: key });
   };
 
   const handleCheckboxChange = (key: string, checked: boolean | 'indeterminate') => {
      setInputDataState(prev => ({ ...prev, [key]: checked === true }));
+      logFirebaseEvent('qr_checkbox_changed', { field: key, checked: checked === true });
    };
 
 
@@ -910,6 +912,7 @@ export default function QrCodeGenerator() {
                    toast({ title: "End Date Adjusted", description: "End date automatically set to 1 hour after the new start date." });
                   return { ...prev, event_start: newDate.toISOString(), event_end: adjustedEndDate.toISOString() }; // Store as ISO strings
               }
+               logFirebaseEvent('qr_event_date_changed', { field: key, date: newDate.toISOString() });
               return { ...prev, event_start: newDate.toISOString() };
           } else { // key === 'event_end'
               // If start date exists and new end date is before start date, show error
@@ -917,6 +920,7 @@ export default function QrCodeGenerator() {
                   toast({ variant: "destructive", title: "Invalid End Date", description: "End date cannot be before start date." });
                   return prev; // Keep previous state
               }
+               logFirebaseEvent('qr_event_date_changed', { field: key, date: newDate.toISOString() });
               return { ...prev, event_end: newDate.toISOString() };
           }
       });
@@ -932,10 +936,12 @@ export default function QrCodeGenerator() {
         ...(target === 'cornersSquare' && { cornersSquareOptions: { ...(prev.cornersSquareOptions ?? defaultOptions.cornersSquareOptions!), color } }),
         ...(target === 'cornersDot' && { cornersDotOptions: { ...(prev.cornersDotOptions ?? defaultOptions.cornersDotOptions!), color } }),
     }));
+    logFirebaseEvent('qr_style_color_changed', { target: target, color: color });
   };
 
  const handleDotStyleChange = (value: DotType) => {
     setOptions(prev => ({ ...prev, dotsOptions: { ...(prev.dotsOptions ?? defaultOptions.dotsOptions!), type: value } }));
+    logFirebaseEvent('qr_style_dot_changed', { dot_style: value });
   };
 
   const handleCornerStyleChange = (target: 'cornersSquare' | 'cornersDot', value: CornerSquareType | CornerDotType) => {
@@ -944,12 +950,14 @@ export default function QrCodeGenerator() {
         ...(target === 'cornersSquare' && { cornersSquareOptions: { ...(prev.cornersSquareOptions ?? defaultOptions.cornersSquareOptions!), type: value as CornerSquareType } }),
         ...(target === 'cornersDot' && { cornersDotOptions: { ...(prev.cornersDotOptions ?? defaultOptions.cornersDotOptions!), type: value as CornerDotType } }),
     }));
+     logFirebaseEvent('qr_style_corner_changed', { target: target, corner_style: value });
   };
 
   const handleQrSizeChange = (value: number[]) => {
       const size = value[0];
        if (size >= 50 && size <= 1000) {
             setOptions(prev => ({ ...prev, width: size, height: size }));
+             logFirebaseEvent('qr_style_size_changed', { size: size });
        }
   }
 
@@ -966,6 +974,7 @@ export default function QrCodeGenerator() {
      if (originalLogoUrl) {
           applyLogoShapeAndOpacity(originalLogoUrl, logoShape, logoOpacity / 100);
      }
+     // Debounce or log on finalize? Logged in applyLogoShapeAndOpacity
   }
 
  const handleLogoShapeChange = (value: 'square' | 'circle') => {
@@ -974,6 +983,7 @@ export default function QrCodeGenerator() {
      if (originalLogoUrl) {
          applyLogoShapeAndOpacity(originalLogoUrl, value, logoOpacity / 100);
      }
+     // Debounce or log on finalize? Logged in applyLogoShapeAndOpacity
  };
 
  const handleLogoOpacityChange = (value: number[]) => {
@@ -983,6 +993,7 @@ export default function QrCodeGenerator() {
       if (originalLogoUrl) {
          applyLogoShapeAndOpacity(originalLogoUrl, logoShape, opacityPercent / 100);
      }
+     // Debounce or log on finalize? Logged in applyLogoShapeAndOpacity
  }
 
  const handleHideDotsChange = (checked: boolean | 'indeterminate') => {
@@ -992,6 +1003,7 @@ export default function QrCodeGenerator() {
           imageOptions: { ...(prev.imageOptions ?? defaultOptions.imageOptions!), hideBackgroundDots: hide }
       }));
       setInputDataState(prev => ({ ...prev, hideBackgroundDots: hide })); // Store for history
+       logFirebaseEvent('qr_logo_hide_dots_changed', { hide_dots: hide });
  }
 
 
@@ -1012,6 +1024,7 @@ export default function QrCodeGenerator() {
         setOriginalLogoUrl(imageUrl); // Store the original base64/URL
         applyLogoShapeAndOpacity(imageUrl, logoShape, logoOpacity / 100);
         setInputDataState(prev => ({ ...prev, logoUrl: imageUrl })); // Store original URL in data for history
+        logFirebaseEvent('qr_logo_uploaded', { file_type: file.type, file_size: file.size });
       };
       reader.onerror = () => toast({ variant: "destructive", title: "File Read Error", description: "Could not read the selected file." });
       reader.readAsDataURL(file);
@@ -1040,6 +1053,7 @@ export default function QrCodeGenerator() {
       }
        setExpiryDate(expiry);
        setInputDataState(prev => ({ ...prev, expiryDate: expiry?.toISOString(), expiryTime: expiry ? format(expiry, "HH:mm") : "00:00" }));
+        logFirebaseEvent('qr_expiry_set', { preset: duration, expiry_date: expiry?.toISOString() });
  };
 
  const handleManualExpiryDateChange = (date: Date | undefined) => {
@@ -1068,6 +1082,7 @@ export default function QrCodeGenerator() {
               setExpiryDate(combinedDate);
               toast({ title: "Expiry Reminder Set", description: `QR code visually marked to expire on ${format(combinedDate, "PPP 'at' HH:mm")}. (Backend needed for real expiry)` });
              setInputDataState(prev => ({ ...prev, expiryDate: combinedDate?.toISOString(), expiryTime: time }));
+             logFirebaseEvent('qr_expiry_set', { manual: true, expiry_date: combinedDate?.toISOString() });
 
          } catch {
               toast({ variant: "destructive", title: "Invalid Time", description: "Please enter a valid time." });
@@ -1079,6 +1094,7 @@ export default function QrCodeGenerator() {
          if (!date) setExpiryTime("00:00");
          if (hadExpiry) {
              toast({ title: "Expiry Removed", description: "QR code expiry marker removed." });
+             logFirebaseEvent('qr_expiry_removed');
          }
          setInputDataState(prev => ({ ...prev, expiryDate: undefined, expiryTime: "00:00" }));
      }
@@ -1413,7 +1429,8 @@ export default function QrCodeGenerator() {
 
   // --- Main Render ---
   return (
-
+    <>
+    {/* Removed <FirebaseAnalyticsLogger /> */}
     <div className="w-full max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-8 px-4 py-6">
         {/* Options Panel */}
         <Card className="lg:col-span-2 order-2 lg:order-1 animate-fade-in">
@@ -1452,6 +1469,7 @@ export default function QrCodeGenerator() {
                                              if (value === 'url') {
                                                  setInputDataState({ url: '' });
                                              }
+                                             logFirebaseEvent('qr_type_selected', { type: value });
                                          }}
                                          value={qrType}
                                      >
@@ -1912,7 +1930,10 @@ export default function QrCodeGenerator() {
                     const data = generateQrData();
                     if (data && isQrGenerated) {
                         navigator.clipboard.writeText(data)
-                            .then(() => toast({ title: "Content Copied", description: "QR code data copied to clipboard." }))
+                            .then(() => {
+                                toast({ title: "Content Copied", description: "QR code data copied to clipboard." });
+                                logFirebaseEvent('qr_data_copied', { qrType: qrType });
+                                })
                             .catch(() => toast({ variant: "destructive", title: "Copy Failed", description: "Could not copy data." }));
                     } else {
                          toast({ variant: "destructive", title: "Cannot Copy", description: "Generate a valid QR code first." });
@@ -1935,5 +1956,6 @@ export default function QrCodeGenerator() {
            </CardFooter>
         </Card>
     </div>
+    </>
   );
 }
