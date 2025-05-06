@@ -1,7 +1,8 @@
+
 'use client'; // Mark as client component
 
 import Link from 'next/link';
-import { Instagram, Twitter, Facebook, Mail } from 'lucide-react';
+import { Instagram, Twitter, Facebook, Mail, LifeBuoy } from 'lucide-react'; // Added LifeBuoy
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import React, { useState, useEffect } from 'react'; // Import useState and useEffect
@@ -26,7 +27,7 @@ export function Footer() {
         "backdrop-blur supports-[backdrop-filter]:bg-background/60" // Subtle blur matching header
         )}>
       <div className="container flex flex-col items-center justify-between gap-4 sm:flex-row">
-        <div className="flex gap-4">
+        <div className="flex flex-wrap justify-center gap-1 sm:gap-2"> {/* Allow wrapping and adjust gap */}
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -78,13 +79,25 @@ export function Footer() {
               <TooltipContent>Contact Us</TooltipContent>
             </Tooltip>
           </TooltipProvider>
+             <TooltipProvider>
+               <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button variant="ghost" size="icon" asChild>
+                      <Link href="/help" aria-label="Help Center">
+                        <LifeBuoy className="h-5 w-5 text-foreground/60 hover:text-foreground/80 transition-colors" />
+                      </Link>
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Help Center</TooltipContent>
+               </Tooltip>
+             </TooltipProvider>
         </div>
         <div className="text-center text-sm text-foreground/60">
           {/* Display year only after it's set on the client */}
           {currentYear !== null && (
               <p>© {currentYear} LinkSpark. All Rights Reserved.</p>
           )}
-          <div className="mt-1 flex justify-center gap-4">
+          <div className="mt-1 flex flex-wrap justify-center gap-x-4 gap-y-1"> {/* Allow wrapping */}
             <Link href="/privacy" className="hover:text-foreground/80 transition-colors">
               Privacy Policy
             </Link>
@@ -92,7 +105,10 @@ export function Footer() {
               Terms of Service
             </Link>
              <Link href="/contact" className="hover:text-foreground/80 transition-colors">
-              Contact Us
+              Contact
+            </Link>
+             <Link href="/help" className="hover:text-foreground/80 transition-colors">
+              Help
             </Link>
           </div>
         </div>
